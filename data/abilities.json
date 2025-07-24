@@ -1,0 +1,22 @@
+[
+  {
+	"name": "Fireball",
+	"damage": 25,
+	"target": "enemy_single"
+  },
+  {
+	"name": "Heal",
+	"damage": -20,
+	"target": "ally_single"
+  },
+  {
+	"name": "Lightning Storm",
+	"damage": 15,
+	"target": "enemy_all"
+  },
+  {
+	"name": "Group Heal",
+	"damage": -10,
+	"target": "ally_all"
+  }
+]

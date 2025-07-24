@@ -1,0 +1,71 @@
+[gd_scene load_steps=11 format=3 uid="uid://bk7x0ddtcmp6n"]
+
+[ext_resource type="Script" uid="uid://240bq3gwpjke" path="res://combatant.gd" id="1_jdpwk"]
+[ext_resource type="Texture2D" uid="uid://dduwdcucu27dg" path="res://demochar_portrait_spritesheet.png" id="2_ei3c3"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_dgoq6"]
+atlas = ExtResource("2_ei3c3")
+region = Rect2(0, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_0q850"]
+atlas = ExtResource("2_ei3c3")
+region = Rect2(48, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_po1pa"]
+atlas = ExtResource("2_ei3c3")
+region = Rect2(96, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_2voop"]
+atlas = ExtResource("2_ei3c3")
+region = Rect2(144, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_onlb6"]
+atlas = ExtResource("2_ei3c3")
+region = Rect2(0, 48, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rsysp"]
+atlas = ExtResource("2_ei3c3")
+region = Rect2(48, 48, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_sfl7p"]
+atlas = ExtResource("2_ei3c3")
+region = Rect2(96, 48, 48, 48)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_ohuge"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_dgoq6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_0q850")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_po1pa")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_2voop")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_onlb6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_rsysp")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sfl7p")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 10.0
+}]
+
+[node name="Combatant" type="Node2D"]
+script = ExtResource("1_jdpwk")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+sprite_frames = SubResource("SpriteFrames_ohuge")
+animation = &"idle"
+autoplay = "idle"
+frame_progress = 0.918874
+flip_h = true
