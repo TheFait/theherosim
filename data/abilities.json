@@ -6,7 +6,7 @@
   },
   {
 	"name": "Heal",
-	"damage": -20,
+	"damage": -10,
 	"target": "ally_single"
   },
   {
@@ -16,7 +16,7 @@
   },
   {
 	"name": "Group Heal",
-	"damage": -10,
+	"damage": -6,
 	"target": "ally_all"
   }
 ]
