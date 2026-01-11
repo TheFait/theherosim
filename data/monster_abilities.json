@@ -106,5 +106,32 @@
 		"num_targets": 2.0,
 		"accuracy_mode": "all",
 		"number_attacks": 1
+	},
+	{
+		"name": "Venomous Bite",
+		"min_damage": 8.0,
+		"max_damage": 14.0,
+		"target": "enemy",
+		"num_targets": 1.0,
+		"accuracy_mode": "all",
+		"number_attacks": 1,
+		"status_effect": {
+			"type": "Poison",
+			"damage": 5.0,
+			"turns": 3
+		}
+	},
+	{
+		"name": "Concussive Blow",
+		"min_damage": 14.0,
+		"max_damage": 20.0,
+		"target": "enemy",
+		"num_targets": 1.0,
+		"accuracy_mode": "all",
+		"number_attacks": 1,
+		"status_effect": {
+			"type": "Stun",
+			"turns": 1
+		}
 	}
 ]

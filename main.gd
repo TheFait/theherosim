@@ -5,10 +5,6 @@ const MONSTER_ABILITY_PATH = "res://data/monster_abilities.json"
 const MONSTER_FAMILY_PATH = "res://data/monster_families.json"
 const TICK_SPEED = 1
 
-# Ability leveling constants
-const ABILITY_LEVEL_BASE_EXP = 10  # Casts needed for level 1 -> 2
-const ABILITY_LEVEL_EXP_MULTIPLIER = 1.25  # 25% more casts each level
-
 # Hit zones 0-10 with different difficulty multipliers
 # Higher multiplier = harder to hit (like vital spots)
 const HIT_ZONES = {
@@ -36,9 +32,7 @@ const MONSTER_COLORS = {
 var heroes = []
 var monsters = []
 var all_combatants = []
-var abilities = []
-var monster_abilities = []
-var monster_families = []
+# abilities, monster_abilities, monster_families now handled by AbilityDatabase singleton
 var family_probabilities = []  # Probability table for current floor
 var rank_probabilities = []    # Probability table for ranks
 var roundsWon = 0
@@ -47,9 +41,6 @@ var currentFloor = ""
 var is_paused = false
 var current_turn_combatant = null
 var last_ability_targets = []
-
-# Hero statistics tracking
-var hero_stats = {}
 
 @onready var log_box = $LogBoxPanel/LogBox
 @onready var start_button = $StartButton
@@ -61,12 +52,23 @@ var hero_stats = {}
 @onready var game_over_stats_container = $GameOverPopup/VBoxContainer/ScrollContainer/StatsContainer
 @onready var game_over_floor_room_label = $GameOverPopup/VBoxContainer/FloorRoomLabel
 @onready var game_over_restart_button = $GameOverPopup/VBoxContainer/RestartButton
+@onready var hero_preview_popup = $HeroPreviewPopup
+@onready var hero_preview_container = $HeroPreviewPopup/VBoxContainer/ScrollContainer/HeroesContainer
+@onready var hero_preview_countdown = $HeroPreviewPopup/VBoxContainer/CountdownLabel
+@onready var floor_cleared_popup = $FloorClearedPopup
+@onready var floor_cleared_container = $FloorClearedPopup/VBoxContainer/ScrollContainer/HeroesContainer
+@onready var floor_cleared_countdown = $FloorClearedPopup/VBoxContainer/CountdownLabel
+@onready var floor_cleared_floor_label = $FloorClearedPopup/VBoxContainer/FloorLabel
 
 func _ready():
 	start_button.pressed.connect(on_start_pressed)
 	pause_button.pressed.connect(on_pause_pressed)
 	game_over_restart_button.pressed.connect(on_restart_pressed)
 	pause_button.disabled = true
+
+	# Connect EventBus signals to UI handlers
+	EventBus.combat_log_entry.connect(log_event)
+
 	log_event("Ready to simulate combat.")
 
 func on_start_pressed():
@@ -74,11 +76,13 @@ func on_start_pressed():
 	pause_button.disabled = false
 	is_paused = false
 	pause_button.text = "Pause"
-	abilities = load_json_file(ABILITY_PATH)
-	monster_abilities = load_json_file(MONSTER_ABILITY_PATH)
-	monster_families = load_json_file(MONSTER_FAMILY_PATH)
+	# Data now loaded by AbilityDatabase singleton
 	generate_new_floor()
 	generate_combatants()
+
+	# Show hero preview popup with countdown
+	await show_hero_preview_popup()
+
 	sort_by_agility()
 	await simulate_battle()
 
@@ -102,7 +106,7 @@ func on_restart_pressed():
 	heroes.clear()
 	monsters.clear()
 	all_combatants.clear()
-	hero_stats.clear()
+	StatsTracker.clear_stats()
 
 	# Clear UI
 	update_combatants_display()
@@ -132,27 +136,8 @@ func update_floor_room_display():
 	room_label.text = "Room: %d / %d" % [currentFloor.current_room + 1, currentFloor.num_rooms]
 
 func generate_hero_tooltip(hero):
-	if not hero_stats.has(hero):
-		return "No statistics available"
-
-	var stats = hero_stats[hero]
-	var tooltip_text = ""
-
-	# Current statistics
-	tooltip_text += "CURRENT STATISTICS\n"
-	tooltip_text += "Total Damage Dealt: %d\n" % int(stats["total_damage_dealt"])
-	tooltip_text += "Total Healing Done: %d\n" % int(stats["total_healing_done"])
-	tooltip_text += "Total Damage Taken: %d\n\n" % int(stats["total_damage_taken"])
-
-	# Abilities
-	tooltip_text += "ABILITIES\n"
-	for ability in hero.abilities:
-		var ability_name = ability["name"]
-		var uses = stats["ability_usage"].get(ability_name, 0)
-		var ability_level = stats["ability_levels"].get(ability_name, 1)
-		tooltip_text += "- %s (Lv. %d) - used %d times\n" % [ability_name, ability_level, uses]
-
-	return tooltip_text
+	# Use StatsTracker to generate tooltip
+	return StatsTracker.generate_tooltip(hero)
 
 func update_combatants_display():
 	# Clear existing children
@@ -306,6 +291,29 @@ func create_combatant_display(combatant):
 
 		container.add_child(exp_container)
 
+	# Add status effects display
+	if combatant.status_effects.size() > 0:
+		var status_container = HBoxContainer.new()
+
+		var status_label = Label.new()
+		status_label.text = "Status:"
+		status_label.custom_minimum_size = Vector2(50, 0)
+		status_container.add_child(status_label)
+
+		var effects_text = ""
+		for effect in combatant.status_effects:
+			if effects_text != "":
+				effects_text += ", "
+			effects_text += effect.get_display_text()
+
+		var effects_label = Label.new()
+		effects_label.text = effects_text
+		effects_label.custom_minimum_size = Vector2(200, 0)
+		effects_label.modulate = Color(1.0, 0.8, 0.2)  # Golden color
+		status_container.add_child(effects_label)
+
+		container.add_child(status_container)
+
 	combatants_list.add_child(container)
 
 func load_json_file(path):
@@ -337,7 +345,7 @@ func generate_combatants():
 	heroes.clear()
 	monsters.clear()
 	all_combatants.clear()
-	hero_stats.clear()
+	StatsTracker.clear_stats()
 
 	for i in 4:
 		var hero = Combatant.new()
@@ -346,21 +354,8 @@ func generate_combatants():
 		hero.abilities = pick_random_abilities()
 		heroes.append(hero)
 
-		# Initialize hero statistics
-		hero_stats[hero] = {
-			"total_damage_dealt": 0.0,
-			"total_healing_done": 0.0,
-			"total_damage_taken": 0.0,
-			"ability_usage": {},
-			"ability_levels": {},
-			"ability_exp": {}
-		}
-
-		# Initialize ability levels for each ability the hero has
-		for ability in hero.abilities:
-			var ability_name = ability["name"]
-			hero_stats[hero]["ability_levels"][ability_name] = 1
-			hero_stats[hero]["ability_exp"][ability_name] = 0
+		# Initialize hero statistics via StatsTracker
+		StatsTracker.initialize_hero(hero)
 
 	var num_monsters = currentFloor.getNextRoom()
 
@@ -377,6 +372,10 @@ func generate_combatants():
 		monsters.append(monster)
 
 	all_combatants = heroes + monsters
+
+	# Initialize CombatantCache with new combatants
+	CombatantCache.initialize(heroes, monsters)
+
 	update_combatants_display()
 
 func generate_monsters():
@@ -396,6 +395,10 @@ func generate_monsters():
 
 	all_combatants.clear()
 	all_combatants = heroes + monsters
+
+	# Reinitialize CombatantCache with new monsters
+	CombatantCache.initialize(heroes, monsters)
+
 	update_combatants_display()
 
 func generate_new_floor():
@@ -414,10 +417,12 @@ func generate_new_floor():
 	update_floor_room_display()
 
 func get_monster_family(family_name):
-	for family in monster_families:
-		if family["name"] == family_name:
-			return family
-	return monster_families[0]  # Default to first family if not found
+	# Now uses O(1) hash lookup instead of O(n) linear search
+	var family = AbilityDatabase.get_family(family_name)
+	if family.is_empty():
+		# Fallback to first family if not found
+		return AbilityDatabase.families[0] if AbilityDatabase.families.size() > 0 else {}
+	return family
 
 func generate_family_probabilities():
 	# Create randomized probability weights for each family
@@ -425,7 +430,7 @@ func generate_family_probabilities():
 	var total_weight = 0.0
 
 	# Assign random weights to each family
-	for family in monster_families:
+	for family in AbilityDatabase.families:
 		var weight = randf_range(1.0, 10.0)
 		total_weight += weight
 		family_probabilities.append({"family": family["name"], "weight": weight, "cumulative": 0.0})
@@ -540,7 +545,7 @@ func random_hero_stats():
 
 func pick_random_abilities():
 	var chosen = []
-	var available_abilities = abilities.duplicate()
+	var available_abilities = AbilityDatabase.abilities.duplicate()
 
 	for i in 3:
 		if available_abilities.is_empty():
@@ -554,20 +559,12 @@ func pick_random_abilities():
 	return chosen
 
 func pick_monster_abilities(family_name):
-	var family = get_monster_family(family_name)
-	var family_ability_names = family["abilities"]
-	var chosen = []
-
-	# Get family-specific abilities from monster_abilities
-	for ability_name in family_ability_names:
-		for ability in monster_abilities:
-			if ability["name"] == ability_name:
-				chosen.append(ability)
-				break
+	# Now uses O(1) hash lookups instead of O(n²) nested loops
+	var chosen = AbilityDatabase.get_monster_abilities_for_family(family_name)
 
 	# If we don't have 3 abilities, fill with random monster abilities
 	while chosen.size() < 3:
-		var random_ability = monster_abilities[randi() % monster_abilities.size()]
+		var random_ability = AbilityDatabase.get_random_monster_ability()
 		if not chosen.has(random_ability):
 			chosen.append(random_ability)
 
@@ -580,7 +577,8 @@ func sort_by_agility():
 	)
 
 func is_battle_over():
-	return heroes.all(func(c): return c.is_dead) or monsters.all(func(c): return c.is_dead)
+	# Use cache to check if all combatants of a team are dead
+	return CombatantCache.are_all_dead(heroes) or CombatantCache.are_all_dead(monsters)
 
 func get_team(combatant):
 	return heroes if heroes.has(combatant) else monsters
@@ -592,14 +590,12 @@ func choose_target(combatant, ability):
 	var num_targets = ability.get("num_targets", 1)
 	var target_type = ability.get("target", "enemy")
 
-	var allies = get_team(combatant)
-	var enemies = get_enemy_team(combatant)
-
+	# Use cached alive combatants instead of filtering every time
 	var potential_targets = []
 	if target_type == "enemy":
-		potential_targets = enemies.filter(func(c): return not c.is_dead)
+		potential_targets = CombatantCache.get_alive_enemies(combatant)
 	else:  # ally
-		potential_targets = allies.filter(func(c): return not c.is_dead)
+		potential_targets = CombatantCache.get_alive_allies(combatant)
 
 	if potential_targets.is_empty():
 		return []
@@ -644,60 +640,12 @@ func check_hit(target, hit_zone):
 	var hit_roll = randi() % 100 + 1
 	return hit_roll <= final_hit_chance
 
-func get_ability_exp_required(level):
-	# Calculate exp required to reach the next level
-	# Level 1->2: 10, Level 2->3: 12.5 (13), Level 3->4: 15.625 (16), etc.
-	return int(ABILITY_LEVEL_BASE_EXP * pow(ABILITY_LEVEL_EXP_MULTIPLIER, level - 1))
-
-func grant_ability_exp(hero, ability_name):
-	if not hero_stats.has(hero):
-		return
-
-	var stats = hero_stats[hero]
-
-	# Initialize if not exists (shouldn't happen but just in case)
-	if not stats["ability_exp"].has(ability_name):
-		stats["ability_exp"][ability_name] = 0
-		stats["ability_levels"][ability_name] = 1
-
-	# Add 1 exp
-	stats["ability_exp"][ability_name] += 1
-
-	# Check for level up
-	var current_level = stats["ability_levels"][ability_name]
-	var exp_required = get_ability_exp_required(current_level)
-
-	if stats["ability_exp"][ability_name] >= exp_required:
-		stats["ability_exp"][ability_name] -= exp_required
-		stats["ability_levels"][ability_name] += 1
-		log_event("%s's %s leveled up to Level %d!" % [hero.combatant_name, ability_name, stats["ability_levels"][ability_name]])
-
-func award_exp(hero, target):
-	# Only award EXP if the target is a monster and is dead
-	if not monsters.has(target) or not target.is_dead:
-		return
-
-	var exp_gained = target.stats.get("EXP", 0)
-	if exp_gained == 0:
-		return
-
-	hero.stats["CurrentEXP"] += exp_gained
-	log_event("%s gains %d EXP!" % [hero.combatant_name, exp_gained])
-
-	# Check for level up
-	while hero.stats["CurrentEXP"] >= hero.stats["EXPToNextLevel"]:
-		hero.stats["CurrentEXP"] -= hero.stats["EXPToNextLevel"]
-		hero.stats["Level"] += 1
-		hero.stats["EXPToNextLevel"] = int(hero.stats["EXPToNextLevel"] * 1.5)
-
-		# Restore 10%-25% of max health on level up
-		var heal_percent = randf_range(0.10, 0.25)
-		var heal_amount = int(hero.stats["MaxHealth"] * heal_percent)
-		var old_health = hero.stats["Health"]
-		hero.stats["Health"] = min(hero.stats["Health"] + heal_amount, hero.stats["MaxHealth"])
-		var actual_heal = hero.stats["Health"] - old_health
-
-		log_event("%s leveled up to Level %d! Restored %d health." % [hero.combatant_name, hero.stats["Level"], actual_heal])
+func apply_status_effect_to_target(target, effect_type: String, params: Dictionary = {}):
+	# Create and apply status effect using the factory
+	var effect = StatusEffects.create_effect(effect_type, params)
+	if effect:
+		target.apply_status_effect(effect)
+		log_event("%s is affected by %s!" % [target.combatant_name, effect.get_display_text()])
 
 func apply_ability(user, ability, targets):
 	last_ability_targets = targets
@@ -707,6 +655,10 @@ func apply_ability(user, ability, targets):
 	if accuracy_mode == "none":
 		# No accuracy check - all targets get hit
 		for target in targets:
+			# Skip if target died during this ability (e.g., multi-target attack)
+			if target.is_dead:
+				continue
+
 			var min_dmg = ability.get("min_damage", 0)
 			var max_dmg = ability.get("max_damage", 0)
 			var user_name = colorize_combatant_name(user)
@@ -729,26 +681,15 @@ func apply_ability(user, ability, targets):
 			var actual_damage = result["actual_damage"]
 			var damage_type = "health" if total_damage < 0 else "damage"
 
-			# Track statistics for heroes
-			if heroes.has(user) and hero_stats.has(user):
-				# Track ability usage
-				if not hero_stats[user]["ability_usage"].has(ability["name"]):
-					hero_stats[user]["ability_usage"][ability["name"]] = 0
-				hero_stats[user]["ability_usage"][ability["name"]] += 1
+			# Emit events for damage/healing tracking
+			if total_damage > 0:
+				EventBus.combatant_damaged.emit(user, target, total_damage, actual_damage)
+			else:
+				EventBus.combatant_healed.emit(user, target, abs(actual_damage))
 
-				# Grant ability exp (only once per ability use, not per target)
-				if target == targets[0]:  # Only on first target
-					grant_ability_exp(user, ability["name"])
-
-				# Track damage/healing
-				if total_damage > 0:
-					hero_stats[user]["total_damage_dealt"] += actual_damage
-				else:
-					hero_stats[user]["total_healing_done"] += abs(actual_damage)
-
-			# Track damage taken by heroes
-			if heroes.has(target) and hero_stats.has(target) and total_damage > 0:
-				hero_stats[target]["total_damage_taken"] += actual_damage
+			# Emit ability usage event (only once per ability use, not per target)
+			if target == targets[0]:  # Only on first target
+				EventBus.ability_used.emit(user, ability, targets)
 
 			# Format damage rolls display
 			var damage_display = ""
@@ -761,12 +702,15 @@ func apply_ability(user, ability, targets):
 				user_name, ability["name"], target_name, damage_display
 			]
 			log_event(action)
-			# Log death with red background
+			# Log death with red background and emit death event
 			if just_died:
 				log_event("[bgcolor=#8B0000][color=#FFFFFF]%s has died![/color][/bgcolor]" % colorize_combatant_name(target))
-			# Award EXP if a hero killed a monster
-			if heroes.has(user):
-				award_exp(user, target)
+				EventBus.combatant_died.emit(target, user)
+
+			# Apply status effect if the ability has one
+			if ability.has("status_effect") and not target.is_dead:
+				var status_data = ability["status_effect"]
+				apply_status_effect_to_target(target, status_data["type"], status_data)
 
 	elif accuracy_mode == "one":
 		# One accuracy check for all targets - all hit or all miss
@@ -786,17 +730,15 @@ func apply_ability(user, ability, targets):
 		if not hit_success:
 			log_event("%s misses all targets" % user_name)
 		else:
-			# Track ability usage once for the whole attack
-			if heroes.has(user) and hero_stats.has(user):
-				if not hero_stats[user]["ability_usage"].has(ability["name"]):
-					hero_stats[user]["ability_usage"][ability["name"]] = 0
-				hero_stats[user]["ability_usage"][ability["name"]] += 1
-
-				# Grant ability exp
-				grant_ability_exp(user, ability["name"])
+			# Emit ability usage event once for the whole attack
+			EventBus.ability_used.emit(user, ability, targets)
 
 			# Apply to all targets since the one check passed
 			for target in targets:
+				# Skip if target died during this ability (e.g., multi-target attack)
+				if target.is_dead:
+					continue
+
 				var min_dmg = ability.get("min_damage", 0)
 				var max_dmg = ability.get("max_damage", 0)
 				var target_name = colorize_combatant_name(target)
@@ -818,16 +760,11 @@ func apply_ability(user, ability, targets):
 				var actual_damage = result["actual_damage"]
 				var damage_type = "health" if total_damage < 0 else "damage"
 
-				# Track damage/healing for heroes
-				if heroes.has(user) and hero_stats.has(user):
-					if total_damage > 0:
-						hero_stats[user]["total_damage_dealt"] += actual_damage
-					else:
-						hero_stats[user]["total_healing_done"] += abs(actual_damage)
-
-				# Track damage taken by heroes
-				if heroes.has(target) and hero_stats.has(target) and total_damage > 0:
-					hero_stats[target]["total_damage_taken"] += actual_damage
+				# Emit events for damage/healing tracking
+				if total_damage > 0:
+					EventBus.combatant_damaged.emit(user, target, total_damage, actual_damage)
+				else:
+					EventBus.combatant_healed.emit(user, target, abs(actual_damage))
 
 				# Format damage rolls display
 				var damage_display = ""
@@ -840,25 +777,26 @@ func apply_ability(user, ability, targets):
 					user_name, ability["name"], target_name, final_zone, HIT_ZONES[final_zone]["name"], damage_display
 				]
 				log_event(action)
-				# Log death with red background
+				# Log death with red background and emit death event
 				if just_died:
 					log_event("[bgcolor=#8B0000][color=#FFFFFF]%s has died![/color][/bgcolor]" % colorize_combatant_name(target))
-				# Award EXP if a hero killed a monster
-				if heroes.has(user):
-					award_exp(user, target)
+					EventBus.combatant_died.emit(target, user)
+
+				# Apply status effect if the ability has one
+				if ability.has("status_effect") and not target.is_dead:
+					var status_data = ability["status_effect"]
+					apply_status_effect_to_target(target, status_data["type"], status_data)
 
 	else:  # accuracy_mode == "all"
-		# Track ability usage once for the whole attack
-		if heroes.has(user) and hero_stats.has(user):
-			if not hero_stats[user]["ability_usage"].has(ability["name"]):
-				hero_stats[user]["ability_usage"][ability["name"]] = 0
-			hero_stats[user]["ability_usage"][ability["name"]] += 1
-
-			# Grant ability exp
-			grant_ability_exp(user, ability["name"])
+		# Emit ability usage event once for the whole attack
+		EventBus.ability_used.emit(user, ability, targets)
 
 		# Separate accuracy check for each target and each attack
 		for target in targets:
+			# Skip if target died during this ability (e.g., multi-target attack)
+			if target.is_dead:
+				continue
+
 			var user_name = colorize_combatant_name(user)
 			var target_name = colorize_combatant_name(target)
 			var min_dmg = ability.get("min_damage", 0)
@@ -904,16 +842,11 @@ func apply_ability(user, ability, targets):
 				var actual_damage = result["actual_damage"]
 				var damage_type = "health" if total_damage < 0 else "damage"
 
-				# Track damage/healing for heroes
-				if heroes.has(user) and hero_stats.has(user):
-					if total_damage > 0:
-						hero_stats[user]["total_damage_dealt"] += actual_damage
-					else:
-						hero_stats[user]["total_healing_done"] += abs(actual_damage)
-
-				# Track damage taken by heroes
-				if heroes.has(target) and hero_stats.has(target) and total_damage > 0:
-					hero_stats[target]["total_damage_taken"] += actual_damage
+				# Emit events for damage/healing tracking
+				if total_damage > 0:
+					EventBus.combatant_damaged.emit(user, target, total_damage, actual_damage)
+				else:
+					EventBus.combatant_healed.emit(user, target, abs(actual_damage))
 
 				# Format damage rolls display
 				var damage_display = ""
@@ -924,17 +857,21 @@ func apply_ability(user, ability, targets):
 
 				log_event("Total damage dealt: %s" % damage_display)
 
-				# Log death with red background
+				# Log death with red background and emit death event
 				if just_died:
 					log_event("[bgcolor=#8B0000][color=#FFFFFF]%s has died![/color][/bgcolor]" % colorize_combatant_name(target))
-				# Award EXP if a hero killed a monster
-				if heroes.has(user):
-					award_exp(user, target)
+					EventBus.combatant_died.emit(target, user)
+
+				# Apply status effect if the ability has one (only if at least one attack hit)
+				if ability.has("status_effect") and not target.is_dead:
+					var status_data = ability["status_effect"]
+					apply_status_effect_to_target(target, status_data["type"], status_data)
 
 	update_combatants_display()
 
 func get_alive_combatants():
-	return all_combatants.filter(func(c): return not c.is_dead)
+	# Use cached alive combatants instead of filtering every time
+	return CombatantCache.get_alive_combatants()
 
 func skip_if_dead(combatant):
 	return combatant.is_dead
@@ -949,10 +886,9 @@ func show_game_over_popup():
 
 	# Add statistics for each hero
 	for hero in heroes:
-		if not hero_stats.has(hero):
+		var stats = StatsTracker.get_hero_stats(hero)
+		if stats.is_empty():
 			continue
-
-		var stats = hero_stats[hero]
 
 		# Hero section container
 		var hero_section = VBoxContainer.new()
@@ -979,16 +915,13 @@ func show_game_over_popup():
 		healing_label.text = "  Total Healing Done: %d" % int(stats["total_healing_done"])
 		hero_section.add_child(healing_label)
 
-		# Most used ability
-		var most_used_ability = "None"
-		var max_uses = 0
-		for ability_name in stats["ability_usage"]:
-			if stats["ability_usage"][ability_name] > max_uses:
-				max_uses = stats["ability_usage"][ability_name]
-				most_used_ability = "%s (%d times)" % [ability_name, max_uses]
+		# Most used ability (use StatsTracker helper)
+		var most_used_ability = StatsTracker.get_most_used_ability(hero)
+		var max_uses = stats["ability_usage"].get(most_used_ability, 0) if most_used_ability != "None" else 0
+		var ability_text = most_used_ability if most_used_ability == "None" else "%s (%d times)" % [most_used_ability, max_uses]
 
 		var ability_label = Label.new()
-		ability_label.text = "  Most Used Ability: %s" % most_used_ability
+		ability_label.text = "  Most Used Ability: %s" % ability_text
 		hero_section.add_child(ability_label)
 
 		# Total damage taken
@@ -1006,6 +939,150 @@ func show_game_over_popup():
 	# Show the popup
 	game_over_popup.visible = true
 
+func show_hero_preview_popup():
+	"""Show the hero preview popup with a 10 second countdown"""
+	# Clear previous heroes
+	for child in hero_preview_container.get_children():
+		child.queue_free()
+
+	# Populate with current heroes
+	for hero in heroes:
+		var hero_section = VBoxContainer.new()
+		hero_section.custom_minimum_size = Vector2(0, 10)
+
+		# Hero name header
+		var name_label = Label.new()
+		name_label.text = "=== %s ===" % hero.combatant_name
+		name_label.add_theme_font_size_override("font_size", 16)
+		hero_section.add_child(name_label)
+
+		# Hero stats
+		var stats_text = "  HP: %d/%d | Power: %d | Resilience: %d | Agility: %d" % [
+			hero.stats["Health"],
+			hero.stats["MaxHealth"],
+			hero.stats["Power"],
+			hero.stats["Resilience"],
+			hero.stats["Agility"]
+		]
+		var stats_label = Label.new()
+		stats_label.text = stats_text
+		hero_section.add_child(stats_label)
+
+		# Abilities
+		var abilities_label = Label.new()
+		abilities_label.text = "  Abilities:"
+		hero_section.add_child(abilities_label)
+
+		for ability in hero.abilities:
+			var ability_label = Label.new()
+			ability_label.text = "    - %s (Damage: %.0f-%.0f)" % [
+				ability["name"],
+				ability.get("min_damage", 0),
+				ability.get("max_damage", 0)
+			]
+			hero_section.add_child(ability_label)
+
+		# Add spacer
+		var spacer = Control.new()
+		spacer.custom_minimum_size = Vector2(0, 15)
+		hero_section.add_child(spacer)
+
+		hero_preview_container.add_child(hero_section)
+
+	# Fade in and countdown
+	await fade_in_popup(hero_preview_popup)
+	await countdown_popup(hero_preview_countdown, "Run starting in %d", 10)
+	await fade_out_popup(hero_preview_popup)
+
+func show_floor_cleared_popup():
+	"""Show the floor cleared popup with a 10 second countdown"""
+	# Update floor label
+	floor_cleared_floor_label.text = "Floor %d Complete" % floorsCleared
+
+	# Clear previous heroes
+	for child in floor_cleared_container.get_children():
+		child.queue_free()
+
+	# Populate with current hero status
+	for hero in heroes:
+		if hero.is_dead:
+			continue
+
+		var hero_section = VBoxContainer.new()
+		hero_section.custom_minimum_size = Vector2(0, 10)
+
+		# Hero name header
+		var name_label = Label.new()
+		name_label.text = "=== %s ===" % hero.combatant_name
+		name_label.add_theme_font_size_override("font_size", 16)
+		hero_section.add_child(name_label)
+
+		# Hero stats
+		var stats_text = "  HP: %d/%d | Level: %d | EXP: %d/%d" % [
+			hero.stats["Health"],
+			hero.stats["MaxHealth"],
+			hero.stats["Level"],
+			hero.stats["CurrentEXP"],
+			hero.stats["EXPToNextLevel"]
+		]
+		var stats_label = Label.new()
+		stats_label.text = stats_text
+		hero_section.add_child(stats_label)
+
+		# Abilities with levels
+		var abilities_label = Label.new()
+		abilities_label.text = "  Abilities:"
+		hero_section.add_child(abilities_label)
+
+		var hero_stats = StatsTracker.get_hero_stats(hero)
+		for ability in hero.abilities:
+			var ability_name = ability["name"]
+			var ability_level = hero_stats["ability_levels"].get(ability_name, 1)
+			var ability_exp = hero_stats["ability_exp"].get(ability_name, 0)
+			var exp_required = ExperienceManager.get_ability_exp_required(ability_level)
+
+			var ability_label = Label.new()
+			ability_label.text = "    - %s (Lv. %d, %d/%d EXP)" % [
+				ability_name,
+				ability_level,
+				ability_exp,
+				exp_required
+			]
+			hero_section.add_child(ability_label)
+
+		# Add spacer
+		var spacer = Control.new()
+		spacer.custom_minimum_size = Vector2(0, 15)
+		hero_section.add_child(spacer)
+
+		floor_cleared_container.add_child(hero_section)
+
+	# Fade in and countdown
+	await fade_in_popup(floor_cleared_popup)
+	await countdown_popup(floor_cleared_countdown, "Next floor starting in %d", 10)
+	await fade_out_popup(floor_cleared_popup)
+
+func fade_in_popup(popup: Panel):
+	"""Fade in a popup over 0.5 seconds"""
+	popup.visible = true
+	popup.modulate.a = 0.0
+	var tween = create_tween()
+	tween.tween_property(popup, "modulate:a", 1.0, 0.5)
+	await tween.finished
+
+func fade_out_popup(popup: Panel):
+	"""Fade out a popup over 0.5 seconds"""
+	var tween = create_tween()
+	tween.tween_property(popup, "modulate:a", 0.0, 0.5)
+	await tween.finished
+	popup.visible = false
+
+func countdown_popup(countdown_label: Label, format_string: String, seconds: int):
+	"""Countdown from seconds to 0, updating the label each second"""
+	for i in range(seconds, 0, -1):
+		countdown_label.text = format_string % i
+		await get_tree().create_timer(1.0).timeout
+
 func print_winner():
 	if heroes.all(func(c): return c.is_dead):
 		log_event("Monsters win! Rounds won: " + str(roundsWon) + ". Floors cleared: " + str(floorsCleared) )
@@ -1022,7 +1099,12 @@ func print_winner():
 		else:
 			roundsWon += 1
 			floorsCleared += 1
-			log_event("Heroes win! All rooms cleared, moving to Floor " + str(floorsCleared+1))
+			log_event("Heroes win! All rooms cleared!")
+
+			# Show floor cleared popup with countdown
+			await show_floor_cleared_popup()
+
+			log_event("Moving to Floor " + str(floorsCleared+1))
 			generate_new_floor()
 		log_event("------------------------------------------------")
 
@@ -1042,10 +1124,29 @@ func simulate_turn(combatant):
 
 	var combatant_name = colorize_combatant_name(combatant)
 	log_event("Turn: " + combatant_name + " (" + str(combatant.stats["Health"]) + ")")
+
+	# Process status effects at turn start
+	combatant.process_status_effects_turn_start()
+	update_combatants_display()
+
+	# Check if combatant died from status effects (e.g., poison)
+	if combatant.is_dead:
+		current_turn_combatant = null
+		return
+
+	# Check if stunned
+	if combatant.is_stunned():
+		current_turn_combatant = null
+		return
+
 	var ability = combatant.choose_ability()
 	var targets = choose_target(combatant, ability)
 	if targets.size() > 0:
 		apply_ability(combatant, ability, targets)
+
+	# Process status effects at turn end
+	combatant.process_status_effects_turn_end()
+	update_combatants_display()
 
 	current_turn_combatant = null
 
@@ -1053,7 +1154,17 @@ func simulate_round():
 	for combatant in get_alive_combatants():
 		while is_paused:
 			await get_tree().create_timer(0.1).timeout
+
+		# Skip if this combatant died during this round (e.g., from poison)
+		if combatant.is_dead:
+			continue
+
 		simulate_turn(combatant)
+
+		# Check if battle ended during this turn
+		if is_battle_over():
+			return
+
 		await get_tree().create_timer(TICK_SPEED).timeout
 
 func simulate_battle():
