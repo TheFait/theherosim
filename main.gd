@@ -3,6 +3,8 @@ extends Node
 const ABILITY_PATH = "res://data/abilities.json"
 const MONSTER_ABILITY_PATH = "res://data/monster_abilities.json"
 const MONSTER_FAMILY_PATH = "res://data/monster_families.json"
+const HERO_FIRST_NAMES_PATH = "res://data/hero_first_names.json"
+const HERO_LAST_NAMES_PATH = "res://data/hero_last_names.json"
 const TICK_SPEED = 1
 
 # Hit zones 0-10 with different difficulty multipliers
@@ -33,6 +35,8 @@ var heroes = []
 var monsters = []
 var all_combatants = []
 # abilities, monster_abilities, monster_families now handled by AbilityDatabase singleton
+var hero_first_names = []  # Loaded from hero_first_names.json
+var hero_last_names = []   # Loaded from hero_last_names.json
 var family_probabilities = []  # Probability table for current floor
 var rank_probabilities = []    # Probability table for ranks
 var roundsWon = 0
@@ -68,6 +72,11 @@ func _ready():
 
 	# Connect EventBus signals to UI handlers
 	EventBus.combat_log_entry.connect(log_event)
+
+	# Load hero name lists
+	const DataLoader = preload("res://data/loaders/DataLoader.gd")
+	hero_first_names = DataLoader.load_json(HERO_FIRST_NAMES_PATH)
+	hero_last_names = DataLoader.load_json(HERO_LAST_NAMES_PATH)
 
 	log_event("Ready to simulate combat.")
 
@@ -349,7 +358,10 @@ func generate_combatants():
 
 	for i in 4:
 		var hero = Combatant.new()
-		hero.combatant_name = "Hero %d" % i
+		# Generate name from first name + last name
+		var first_name = hero_first_names[randi() % hero_first_names.size()]
+		var last_name = hero_last_names[randi() % hero_last_names.size()]
+		hero.combatant_name = "%s %s" % [first_name, last_name]
 		hero.stats = random_hero_stats()
 		hero.abilities = pick_random_abilities()
 		heroes.append(hero)
@@ -388,8 +400,22 @@ func generate_monsters():
 		var rank = roll_monster_rank()
 		var family = get_monster_family(family_name)
 		var rank_name = family["rank_names"][rank]
-		monster.combatant_name = "%s %s" % [rank_name, family_name]
+
+		# 1% chance to be shiny (5x EXP)
+		monster.is_shiny = randf() < 0.01
+
+		# Add "Shiny" prefix to name if shiny
+		if monster.is_shiny:
+			monster.combatant_name = "Shiny %s %s" % [rank_name, family_name]
+		else:
+			monster.combatant_name = "%s %s" % [rank_name, family_name]
+
 		monster.stats = random_monster_stats(family_name, rank)
+
+		# Multiply EXP by 5 if shiny
+		if monster.is_shiny:
+			monster.stats["EXP"] = int(monster.stats["EXP"] * 5)
+
 		monster.abilities = pick_monster_abilities(family_name)
 		monsters.append(monster)
 
@@ -524,7 +550,7 @@ func random_stats():
 		"Willpower": randi_range(3, 8),
 		"Accuracy": randi_range(50, 80),
 		"Evasion": randi_range(0, 20),
-		"EXP": randi_range(30, 80)
+		"EXP": randi_range(40, 120)
 	}
 
 func random_hero_stats():
@@ -1147,6 +1173,9 @@ func simulate_turn(combatant):
 	# Process status effects at turn end
 	combatant.process_status_effects_turn_end()
 	update_combatants_display()
+
+	# Turn end separator
+	log_event("[bgcolor=#FFFFFF][color=#000000]TURN END[/color][/bgcolor]")
 
 	current_turn_combatant = null
 

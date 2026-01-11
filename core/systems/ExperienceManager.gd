@@ -52,7 +52,7 @@ func award_hero_exp(hero, amount: int):
 		hero.stats["Resilience"] = int(hero.stats["Resilience"] * 1.05)
 
 		# Restore 10-25% health on level up
-		var heal_percent = randf_range(0.1, 0.25)
+		var heal_percent = randf_range(0.15, 0.3)
 		var heal_amount = int(hero.stats["MaxHealth"] * heal_percent)
 		hero.stats["Health"] = min(hero.stats["Health"] + heal_amount, hero.stats["MaxHealth"])
 

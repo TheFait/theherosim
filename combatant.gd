@@ -6,6 +6,7 @@ var stats = {}
 var abilities = []
 var is_dead = false
 var status_effects = []  # Array of StatusEffect objects
+var is_shiny = false  # 1% chance for monsters to be shiny (5x EXP)
 
 func take_damage(amount):
 	var was_alive = not is_dead
@@ -23,7 +24,41 @@ func take_damage(amount):
 	return {"died": was_alive and is_dead, "actual_damage": actual_damage}
 
 func choose_ability():
+	# Check if this is a hero with ability levels tracked
+	if CombatantCache.is_hero(self):
+		var hero_stats = StatsTracker.get_hero_stats(self)
+		if not hero_stats.is_empty():
+			# 60% chance to use highest level ability
+			if randf() < 0.6:
+				return _choose_highest_level_ability(hero_stats)
+			# 40% chance to use any ability (including highest)
+
+	# Default: random ability (used by monsters and 40% of hero picks)
 	return abilities[randi() % abilities.size()]
+
+func _choose_highest_level_ability(hero_stats: Dictionary):
+	"""Choose randomly from the abilities with the highest level"""
+	var max_level = 0
+	var highest_abilities = []
+
+	# Find the maximum level
+	for ability in abilities:
+		var ability_name = ability["name"]
+		var level = hero_stats["ability_levels"].get(ability_name, 1)
+		if level > max_level:
+			max_level = level
+
+	# Collect all abilities at max level
+	for ability in abilities:
+		var ability_name = ability["name"]
+		var level = hero_stats["ability_levels"].get(ability_name, 1)
+		if level == max_level:
+			highest_abilities.append(ability)
+
+	# Return random choice from highest level abilities
+	if highest_abilities.is_empty():
+		return abilities[randi() % abilities.size()]
+	return highest_abilities[randi() % highest_abilities.size()]
 
 func choose_hit_zone():
 	return randi() % 11
