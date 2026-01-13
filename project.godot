@@ -22,6 +22,10 @@ AbilityDatabase="*res://data/loaders/AbilityDatabase.gd"
 CombatantCache="*res://core/systems/CombatantCache.gd"
 StatsTracker="*res://core/systems/StatsTracker.gd"
 ExperienceManager="*res://core/systems/ExperienceManager.gd"
+ItemManager="*res://core/systems/ItemManager.gd"
+WeatherManager="*res://core/systems/WeatherManager.gd"
+ElementalSystem="*res://core/systems/ElementalSystem.gd"
+NarrativeRoom="*res://core/systems/NarrativeRoom.gd"
 
 [input]
 

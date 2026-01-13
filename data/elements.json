@@ -1,0 +1,98 @@
+[
+	{
+		"id": "fire",
+		"name": "Fire",
+		"icon": "🔥",
+		"color": "#FF4500",
+		"strong_against": ["ice", "nature"],
+		"weak_against": ["water", "earth"]
+	},
+	{
+		"id": "water",
+		"name": "Water",
+		"icon": "💧",
+		"color": "#1E90FF",
+		"strong_against": ["fire", "earth"],
+		"weak_against": ["ice", "lightning"]
+	},
+	{
+		"id": "ice",
+		"name": "Ice",
+		"icon": "❄️",
+		"color": "#00CED1",
+		"strong_against": ["water", "wind"],
+		"weak_against": ["fire", "lightning"]
+	},
+	{
+		"id": "lightning",
+		"name": "Lightning",
+		"icon": "⚡",
+		"color": "#FFD700",
+		"strong_against": ["water", "ice"],
+		"weak_against": ["earth", "wind"]
+	},
+	{
+		"id": "earth",
+		"name": "Earth",
+		"icon": "🪨",
+		"color": "#8B4513",
+		"strong_against": ["fire", "lightning"],
+		"weak_against": ["water", "wind"]
+	},
+	{
+		"id": "wind",
+		"name": "Wind",
+		"icon": "💨",
+		"color": "#87CEEB",
+		"strong_against": ["earth", "lightning"],
+		"weak_against": ["ice", "nature"]
+	},
+	{
+		"id": "nature",
+		"name": "Nature",
+		"icon": "🌿",
+		"color": "#228B22",
+		"strong_against": ["wind", "dark"],
+		"weak_against": ["fire", "light"]
+	},
+	{
+		"id": "light",
+		"name": "Light",
+		"icon": "✨",
+		"color": "#FFFACD",
+		"strong_against": ["dark", "nature"],
+		"weak_against": ["void", "shadow"]
+	},
+	{
+		"id": "dark",
+		"name": "Dark",
+		"icon": "🌑",
+		"color": "#4B0082",
+		"strong_against": ["light", "void"],
+		"weak_against": ["nature", "holy"]
+	},
+	{
+		"id": "void",
+		"name": "Void",
+		"icon": "🕳️",
+		"color": "#800080",
+		"strong_against": ["light", "shadow"],
+		"weak_against": ["dark", "holy"]
+	},
+	{
+		"id": "shadow",
+		"name": "Shadow",
+		"icon": "👤",
+		"color": "#2F4F4F",
+		"strong_against": ["void", "holy"],
+		"weak_against": ["light", "nature"]
+	},
+	{
+		"id": "holy",
+		"name": "Holy",
+		"icon": "🛐",
+		"color": "#FFE4B5",
+		"strong_against": ["dark", "shadow"],
+		"weak_against": ["void", "nature"]
+	}
+]

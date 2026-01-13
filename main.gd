@@ -51,7 +51,10 @@ var last_ability_targets = []
 @onready var pause_button = $PauseButton
 @onready var floor_label = $FloorLabel
 @onready var room_label = $RoomLabel
+@onready var weather_label = $WeatherLabel
+@onready var weather_particles = $WeatherParticles  # Container for weather particle effects
 @onready var combatants_list = $CombatantsPanel/ScrollContainer/CombatantsList
+@onready var monsters_list = $MonstersPanel/ScrollContainer/CombatantsList
 @onready var game_over_popup = $GameOverPopup
 @onready var game_over_stats_container = $GameOverPopup/VBoxContainer/ScrollContainer/StatsContainer
 @onready var game_over_floor_room_label = $GameOverPopup/VBoxContainer/FloorRoomLabel
@@ -63,6 +66,12 @@ var last_ability_targets = []
 @onready var floor_cleared_container = $FloorClearedPopup/VBoxContainer/ScrollContainer/HeroesContainer
 @onready var floor_cleared_countdown = $FloorClearedPopup/VBoxContainer/CountdownLabel
 @onready var floor_cleared_floor_label = $FloorClearedPopup/VBoxContainer/FloorLabel
+@onready var loot_room_popup = $LootRoomPopup
+@onready var loot_room_container = $LootRoomPopup/VBoxContainer/ScrollContainer/LootContainer
+@onready var narrative_room_popup = $NarrativeRoomPopup
+@onready var narrative_room_container = $NarrativeRoomPopup/VBoxContainer/ScrollContainer/NarrativeContainer
+@onready var narrative_room_situation_title = $NarrativeRoomPopup/VBoxContainer/SituationTitleLabel
+@onready var narrative_room_countdown = $NarrativeRoomPopup/VBoxContainer/CountdownLabel
 
 func _ready():
 	start_button.pressed.connect(on_start_pressed)
@@ -72,6 +81,7 @@ func _ready():
 
 	# Connect EventBus signals to UI handlers
 	EventBus.combat_log_entry.connect(log_event)
+	EventBus.combatant_died.connect(handle_monster_loot_drop)
 
 	# Load hero name lists
 	const DataLoader = preload("res://data/loaders/DataLoader.gd")
@@ -140,9 +150,55 @@ func colorize_combatant_name(combatant):
 		return colorize_monster_name(combatant.combatant_name)
 	return combatant.combatant_name
 
+## Apply elemental multipliers to damage
+## Returns modified damage and a text description of any multiplier
+func apply_elemental_damage(base_damage: float, user: Combatant, target: Combatant, ability: Dictionary) -> Dictionary:
+	var final_damage = base_damage
+	var multiplier_text = ""
+
+	# Only apply elemental multipliers to damage abilities (positive damage)
+	if base_damage <= 0:
+		return {"damage": final_damage, "text": ""}
+
+	var ability_element = ability.get("element", "")
+
+	# Apply elemental advantage/disadvantage (attacker element vs defender element)
+	var elemental_multiplier = ElementalSystem.get_elemental_multiplier(ability_element, target.element)
+	if elemental_multiplier != 1.0:
+		final_damage *= elemental_multiplier
+		if elemental_multiplier == 2.0:
+			multiplier_text = " [color=#00FF00](2x SUPER EFFECTIVE!)[/color]"
+		elif elemental_multiplier == 0.5:
+			multiplier_text = " [color=#FF6347](0.5x Not very effective...)[/color]"
+
+	# Apply affinity bonus if user is a hero
+	if heroes.has(user):
+		var affinity_multiplier = ElementalSystem.get_affinity_multiplier(user.elemental_affinities, ability_element)
+		if affinity_multiplier > 1.0:
+			final_damage *= affinity_multiplier
+			multiplier_text += " [color=#FFD700](+10% Affinity)[/color]"
+
+	return {"damage": final_damage, "text": multiplier_text}
+
 func update_floor_room_display():
 	floor_label.text = "Floor: %d" % (floorsCleared + 1)
 	room_label.text = "Room: %d / %d" % [currentFloor.current_room + 1, currentFloor.num_rooms]
+
+func update_weather_display():
+	var weather_name = WeatherManager.get_weather_display()
+	var weather_desc = WeatherManager.get_weather_description()
+	weather_label.text = "Weather: %s" % weather_name
+	weather_label.tooltip_text = weather_desc
+
+	# Add particle effects
+	if WeatherManager.has_particle_effect():
+		var particle_name = WeatherManager.get_particle_effect()
+		# Clear existing particles
+		for child in weather_particles.get_children():
+			child.queue_free()
+		# Load and add new particle system
+		var particles = load("res://particles/%s.tscn" % particle_name).instantiate()
+		weather_particles.add_child(particles)
 
 func generate_hero_tooltip(hero):
 	# Use StatsTracker to generate tooltip
@@ -151,6 +207,9 @@ func generate_hero_tooltip(hero):
 func update_combatants_display():
 	# Clear existing children
 	for child in combatants_list.get_children():
+		child.queue_free()
+
+	for child in monsters_list.get_children():
 		child.queue_free()
 
 	# Add Heroes header
@@ -172,11 +231,11 @@ func update_combatants_display():
 	var monsters_label = Label.new()
 	monsters_label.text = "MONSTERS"
 	monsters_label.add_theme_font_size_override("font_size", 16)
-	combatants_list.add_child(monsters_label)
+	monsters_list.add_child(monsters_label)
 
 	# Add each monster
 	for monster in monsters:
-		create_combatant_display(monster)
+		create_monster_display(monster)
 
 func create_combatant_display(combatant):
 	var container = VBoxContainer.new()
@@ -215,9 +274,14 @@ func create_combatant_display(combatant):
 	if heroes.has(combatant):
 		name_text = "Lv. %d %s" % [combatant.stats.get("Level", 1), name_text]
 
-	# Colorize monsters by family
+	# Colorize monsters by family and add element icon
 	if monsters.has(combatant):
 		name_text = colorize_monster_name(name_text)
+		# Add element icon next to monster name
+		if combatant.element != "":
+			var element_icon = ElementalSystem.get_element_icon(combatant.element)
+			var element_color = ElementalSystem.get_element_color(combatant.element)
+			name_text += " [color=%s]%s[/color]" % [element_color, element_icon]
 
 	# Italic if last target
 	if last_ability_targets.has(combatant):
@@ -325,6 +389,122 @@ func create_combatant_display(combatant):
 
 	combatants_list.add_child(container)
 
+func create_monster_display(combatant):
+	var container = VBoxContainer.new()
+	container.custom_minimum_size = Vector2(0, 40)
+
+	# Name label with arrow indicator
+	var name_container = HBoxContainer.new()
+
+	# Green arrow for current turn
+	if combatant == current_turn_combatant:
+		var arrow_label = Label.new()
+		arrow_label.text = "► "
+		arrow_label.modulate = Color(0.2, 1.0, 0.2)
+		name_container.add_child(arrow_label)
+	else:
+		var spacer = Label.new()
+		spacer.text = "   "
+		name_container.add_child(spacer)
+
+	# Name label using RichTextLabel for BBCode support
+	var name_label = RichTextLabel.new()
+	name_label.bbcode_enabled = true
+	name_label.fit_content = true
+	name_label.scroll_active = false
+	name_label.custom_minimum_size = Vector2(180, 20)
+
+	# Build the BBCode text
+	var name_text = combatant.combatant_name
+
+	# Colorize monsters by family and add element icon
+	if monsters.has(combatant):
+		name_text = colorize_monster_name(name_text)
+		# Add element icon next to monster name
+		if combatant.element != "":
+			var element_icon = ElementalSystem.get_element_icon(combatant.element)
+			var element_color = ElementalSystem.get_element_color(combatant.element)
+			name_text += " [color=%s]%s[/color]" % [element_color, element_icon]
+
+	# Italic if last target
+	if last_ability_targets.has(combatant):
+		name_text = "[i][color=#FFFFCC]" + name_text + "[/color][/i]"
+
+	# Gray out if dead
+	if combatant.is_dead:
+		name_text = "[color=#808080]" + name_text + "[/color]"
+
+	name_label.text = name_text
+
+	name_container.add_child(name_label)
+	container.add_child(name_container)
+
+	# Health bar container
+	var health_container = HBoxContainer.new()
+
+	# HP Label
+	var hp_label = Label.new()
+	hp_label.text = "HP:"
+	hp_label.custom_minimum_size = Vector2(25, 0)
+	health_container.add_child(hp_label)
+
+	# Health bar background
+	var health_bg = ProgressBar.new()
+	health_bg.custom_minimum_size = Vector2(175, 20)
+	health_bg.max_value = combatant.stats["MaxHealth"]
+	health_bg.value = combatant.stats["Health"]
+	health_bg.show_percentage = false
+
+	# Color the health bar based on health
+	var health_percent = float(combatant.stats["Health"]) / float(combatant.stats["MaxHealth"])
+	if combatant.is_dead:
+		health_bg.modulate = Color(0.3, 0.3, 0.3)
+	elif health_percent > 0.66:
+		health_bg.modulate = Color(0.2, 1.0, 0.2)
+	elif health_percent > 0.33:
+		health_bg.modulate = Color(1.0, 1.0, 0.2)
+	else:
+		health_bg.modulate = Color(1.0, 0.2, 0.2)
+
+	health_container.add_child(health_bg)
+
+	# Health value label
+	var health_label = Label.new()
+	if combatant.is_dead:
+		health_label.text = " DEAD"
+		health_label.modulate = Color(0.5, 0.5, 0.5)
+	else:
+		health_label.text = " %d/%d" % [combatant.stats["Health"], combatant.stats["MaxHealth"]]
+	health_label.custom_minimum_size = Vector2(70, 0)
+	health_container.add_child(health_label)
+
+	container.add_child(health_container)
+
+	# Add status effects display
+	if combatant.status_effects.size() > 0:
+		var status_container = HBoxContainer.new()
+
+		var status_label = Label.new()
+		status_label.text = "Status:"
+		status_label.custom_minimum_size = Vector2(50, 0)
+		status_container.add_child(status_label)
+
+		var effects_text = ""
+		for effect in combatant.status_effects:
+			if effects_text != "":
+				effects_text += ", "
+			effects_text += effect.get_display_text()
+
+		var effects_label = Label.new()
+		effects_label.text = effects_text
+		effects_label.custom_minimum_size = Vector2(200, 0)
+		effects_label.modulate = Color(1.0, 0.8, 0.2)  # Golden color
+		status_container.add_child(effects_label)
+
+		container.add_child(status_container)
+
+	monsters_list.add_child(container)
+
 func load_json_file(path):
 	if not FileAccess.file_exists(path):
 		push_error("File not found: " + path)
@@ -356,6 +536,10 @@ func generate_combatants():
 	all_combatants.clear()
 	StatsTracker.clear_stats()
 
+	# Set initial weather for first room
+	var weather_id = WeatherManager.roll_random_weather()
+	WeatherManager.set_weather(weather_id)
+
 	for i in 4:
 		var hero = Combatant.new()
 		# Generate name from first name + last name
@@ -363,6 +547,7 @@ func generate_combatants():
 		var last_name = hero_last_names[randi() % hero_last_names.size()]
 		hero.combatant_name = "%s %s" % [first_name, last_name]
 		hero.stats = random_hero_stats()
+		hero.base_stats = hero.stats.duplicate(true)  # Store base stats for item calculations
 		hero.abilities = pick_random_abilities()
 		heroes.append(hero)
 
@@ -389,9 +574,14 @@ func generate_combatants():
 	CombatantCache.initialize(heroes, monsters)
 
 	update_combatants_display()
+	update_weather_display()
 
 func generate_monsters():
 	monsters.clear()
+
+	# Roll for new weather for this room
+	var weather_id = WeatherManager.roll_random_weather()
+	WeatherManager.set_weather(weather_id)
 
 	for i in 3:
 		var monster = Combatant.new()
@@ -417,6 +607,13 @@ func generate_monsters():
 			monster.stats["EXP"] = int(monster.stats["EXP"] * 5)
 
 		monster.abilities = pick_monster_abilities(family_name)
+
+		# Assign random element from family's elemental_types
+		if family.has("elemental_types") and not family["elemental_types"].is_empty():
+			var elemental_types = family["elemental_types"]
+			var random_element = elemental_types[randi() % elemental_types.size()]
+			monster.element = random_element if random_element != "none" else ""
+
 		monsters.append(monster)
 
 	all_combatants.clear()
@@ -426,6 +623,7 @@ func generate_monsters():
 	CombatantCache.initialize(heroes, monsters)
 
 	update_combatants_display()
+	update_weather_display()
 
 func generate_new_floor():
 	# Generate new probability tables for this floor
@@ -602,6 +800,51 @@ func sort_by_agility():
 		return b.stats["Agility"] - a.stats["Agility"]
 	)
 
+## Give an item to a hero, handling full inventory
+func give_item_to_hero(hero: Combatant, item: Dictionary):
+	var max_slots = ItemManager.get_player_item_slots()
+	var result = hero.equip_item(item, max_slots)
+
+	# Log the item addition
+	log_event("%s received %s" % [hero.combatant_name, ItemManager.get_colored_item_name(result["added"])])
+
+	# Log if an item was removed due to full inventory
+	if result["removed"] != null:
+		log_event("  → Replaced %s" % ItemManager.get_colored_item_name(result["removed"]))
+
+## Handle loot drop when a monster dies
+func handle_monster_loot_drop(monster: Combatant, killer: Combatant):
+	# Only heroes can receive loot, and only from monster kills
+	if killer == null or not CombatantCache.is_hero(killer):
+		return
+	if not CombatantCache.is_monster(monster):
+		return
+
+	# Get monster's family to find treasure packages
+	var monster_name = monster.combatant_name
+	var family_name = ""
+
+	# Extract family name from monster name (e.g., "Chieftain Goblin" -> "Goblin")
+	for family in AbilityDatabase.families:
+		if monster_name.contains(family["name"]):
+			family_name = family["name"]
+			break
+
+	if family_name.is_empty():
+		return
+
+	# Get family data to check for treasure packages
+	var family = get_monster_family(family_name)
+	if not family.has("treasure_packages") or family["treasure_packages"].is_empty():
+		return
+
+	# Roll for items from each treasure package
+	for package_id in family["treasure_packages"]:
+		var item_ids = ItemManager.roll_treasure_package(package_id)
+		for item_id in item_ids:
+			var item = ItemManager.create_item(item_id)
+			give_item_to_hero(killer, item)
+
 func is_battle_over():
 	# Use cache to check if all combatants of a team are dead
 	return CombatantCache.are_all_dead(heroes) or CombatantCache.are_all_dead(monsters)
@@ -634,6 +877,10 @@ func choose_target(combatant, ability):
 func check_accuracy(user, intended_zone):
 	var accuracy_roll = randi() % 100 + 1
 	var accuracy_stat = user.stats["Accuracy"]
+
+	# Apply weather accuracy modifier (Fog)
+	var weather_modifier = WeatherManager.get_accuracy_modifier()
+	accuracy_stat += weather_modifier
 
 	if accuracy_roll <= accuracy_stat:
 		return {"success": true, "zone": intended_zone, "margin": 0}
@@ -678,6 +925,12 @@ func apply_ability(user, ability, targets):
 	var accuracy_mode = ability.get("accuracy_mode", "all")
 	var number_attacks = ability.get("number_attacks", 1)
 
+	# Check for Rain weather slip effect
+	if WeatherManager.should_slip_on_attack():
+		var user_name = colorize_combatant_name(user)
+		log_event("%s slipped in the rain and missed their turn!" % user_name)
+		return  # Skip the entire ability
+
 	if accuracy_mode == "none":
 		# No accuracy check - all targets get hit
 		for target in targets:
@@ -702,6 +955,11 @@ func apply_ability(user, ability, targets):
 					damage_text = "[b][i]" + damage_text + "[/i][/b]"
 				damage_rolls.append(damage_text)
 
+			# Apply elemental multipliers
+			var elemental_result = apply_elemental_damage(total_damage, user, target, ability)
+			total_damage = elemental_result["damage"]
+			var elemental_text = elemental_result["text"]
+
 			var result = target.take_damage(total_damage)
 			var just_died = result["died"]
 			var actual_damage = result["actual_damage"]
@@ -724,8 +982,8 @@ func apply_ability(user, ability, targets):
 			else:
 				damage_display = "(%s) = %d %s" % [" + ".join(damage_rolls), int(abs(total_damage)), damage_type]
 
-			var action = "%s uses %s on %s for %s." % [
-				user_name, ability["name"], target_name, damage_display
+			var action = "%s uses %s on %s for %s%s." % [
+				user_name, ability["name"], target_name, damage_display, elemental_text
 			]
 			log_event(action)
 			# Log death with red background and emit death event
@@ -781,6 +1039,11 @@ func apply_ability(user, ability, targets):
 						damage_text = "[b][i]" + damage_text + "[/i][/b]"
 					damage_rolls.append(damage_text)
 
+				# Apply elemental multipliers
+				var elemental_result = apply_elemental_damage(total_damage, user, target, ability)
+				total_damage = elemental_result["damage"]
+				var elemental_text = elemental_result["text"]
+
 				var result = target.take_damage(total_damage)
 				var just_died = result["died"]
 				var actual_damage = result["actual_damage"]
@@ -799,8 +1062,8 @@ func apply_ability(user, ability, targets):
 				else:
 					damage_display = "(%s) = %d %s" % [" + ".join(damage_rolls), int(abs(total_damage)), damage_type]
 
-				var action = "%s uses %s on %s hitting zone %d (%s) for %s." % [
-					user_name, ability["name"], target_name, final_zone, HIT_ZONES[final_zone]["name"], damage_display
+				var action = "%s uses %s on %s hitting zone %d (%s) for %s%s." % [
+					user_name, ability["name"], target_name, final_zone, HIT_ZONES[final_zone]["name"], damage_display, elemental_text
 				]
 				log_event(action)
 				# Log death with red background and emit death event
@@ -863,6 +1126,11 @@ func apply_ability(user, ability, targets):
 
 			# Apply total damage if any attacks hit
 			if hit_count > 0:
+				# Apply elemental multipliers
+				var elemental_result = apply_elemental_damage(total_damage, user, target, ability)
+				total_damage = elemental_result["damage"]
+				var elemental_text = elemental_result["text"]
+
 				var result = target.take_damage(total_damage)
 				var just_died = result["died"]
 				var actual_damage = result["actual_damage"]
@@ -881,7 +1149,7 @@ func apply_ability(user, ability, targets):
 				else:
 					damage_display = "(%s) = %d %s" % [" + ".join(damage_rolls), int(abs(total_damage)), damage_type]
 
-				log_event("Total damage dealt: %s" % damage_display)
+				log_event("Total damage dealt: %s%s" % [damage_display, elemental_text])
 
 				# Log death with red background and emit death event
 				if just_died:
@@ -1001,7 +1269,14 @@ func show_hero_preview_popup():
 
 		for ability in hero.abilities:
 			var ability_label = Label.new()
-			ability_label.text = "    - %s (Damage: %.0f-%.0f)" % [
+
+			# Add element icon if ability has one
+			var element_icon = ""
+			if ability.has("element") and ability["element"] != "":
+				element_icon = ElementalSystem.get_element_icon(ability["element"]) + " "
+
+			ability_label.text = "    - %s%s (Damage: %.0f-%.0f)" % [
+				element_icon,
 				ability["name"],
 				ability.get("min_damage", 0),
 				ability.get("max_damage", 0)
@@ -1109,6 +1384,184 @@ func countdown_popup(countdown_label: Label, format_string: String, seconds: int
 		countdown_label.text = format_string % i
 		await get_tree().create_timer(1.0).timeout
 
+func show_loot_room():
+	"""Handle loot room after floor completion"""
+	log_event("------------------------------------------------")
+	log_event("LOOT ROOM")
+	log_event("------------------------------------------------")
+
+	var display_duration = ItemManager.get_loot_room_display_duration()
+	var item_chance = ItemManager.get_loot_room_item_chance()
+	var resurrection_chance = ItemManager.get_loot_room_resurrection_chance()
+	var resurrection_health_percent = ItemManager.get_loot_room_resurrection_health_percent()
+
+	# Clear previous loot results
+	for child in loot_room_container.get_children():
+		child.queue_free()
+
+	# Process each hero and build UI
+	for hero in heroes:
+		var hero_section = VBoxContainer.new()
+		hero_section.custom_minimum_size = Vector2(0, 10)
+
+		# Hero name header
+		var name_label = Label.new()
+		name_label.add_theme_font_size_override("font_size", 16)
+		hero_section.add_child(name_label)
+
+		if hero.is_dead:
+			# Dead heroes have a chance to be resurrected
+			if randf() < resurrection_chance:
+				var max_health = hero.base_stats["MaxHealth"]
+				var resurrection_health = int(max_health * resurrection_health_percent)
+				hero.stats["Health"] = resurrection_health
+				hero.is_dead = false
+				name_label.text = "=== %s ===" % hero.combatant_name
+				var result_label = Label.new()
+				result_label.text = "[color=#00FF00]RESURRECTED with %d HP![/color]" % resurrection_health
+				result_label.set("theme_override_colors/font_color", Color(0, 1, 0))
+				hero_section.add_child(result_label)
+				log_event("%s was resurrected with %d HP!" % [hero.combatant_name, resurrection_health])
+			else:
+				name_label.text = "=== %s (DEAD) ===" % hero.combatant_name
+				var result_label = Label.new()
+				result_label.text = "Remains dead."
+				result_label.set("theme_override_colors/font_color", Color(0.5, 0.5, 0.5))
+				hero_section.add_child(result_label)
+				log_event("%s remains dead." % hero.combatant_name)
+		else:
+			name_label.text = "=== %s ===" % hero.combatant_name
+			# Living heroes roll for loot
+			if randf() < item_chance:
+				# Roll for items from common_chest treasure package
+				var item_ids = ItemManager.roll_treasure_package("common_chest")
+				if not item_ids.is_empty():
+					for item_id in item_ids:
+						var item = ItemManager.create_item(item_id)
+						give_item_to_hero(hero, item)
+
+						# Get random message with placeholders replaced
+						var message = ItemManager.get_item_found_message(hero.combatant_name, item)
+						var result_label = RichTextLabel.new()
+						result_label.bbcode_enabled = true
+						result_label.fit_content = true
+						result_label.scroll_active = false
+						result_label.custom_minimum_size = Vector2(0, 30)
+						result_label.text = message.replace(item["name"], ItemManager.get_colored_item_name(item))
+						hero_section.add_child(result_label)
+						log_event(message)
+				else:
+					# Get random "not found" message
+					var message = ItemManager.get_item_not_found_message(hero.combatant_name)
+					var result_label = Label.new()
+					result_label.text = message
+					result_label.set("theme_override_colors/font_color", Color(0.7, 0.7, 0.7))
+					hero_section.add_child(result_label)
+					log_event(message)
+			else:
+				# Get random "not found" message
+				var message = ItemManager.get_item_not_found_message(hero.combatant_name)
+				var result_label = Label.new()
+				result_label.text = message
+				result_label.set("theme_override_colors/font_color", Color(0.7, 0.7, 0.7))
+				hero_section.add_child(result_label)
+				log_event(message)
+
+		# Add spacing
+		var spacer = Control.new()
+		spacer.custom_minimum_size = Vector2(0, 15)
+		hero_section.add_child(spacer)
+
+		loot_room_container.add_child(hero_section)
+
+	# Show popup with fade in
+	await fade_in_popup(loot_room_popup)
+
+	log_event("Loot room will close in %d seconds..." % int(display_duration))
+
+	# Wait for the display duration
+	await get_tree().create_timer(display_duration).timeout
+
+	# Hide popup with fade out
+	await fade_out_popup(loot_room_popup)
+
+	log_event("Loot room closed.")
+	log_event("------------------------------------------------")
+
+func show_narrative_room():
+	"""Handle narrative room event"""
+	log_event("------------------------------------------------")
+	log_event("NARRATIVE EVENT")
+	log_event("------------------------------------------------")
+
+	# Get a random situation
+	var situation = NarrativeRoom.get_random_situation()
+	if situation.is_empty():
+		log_event("No narrative situations available.")
+		return
+
+	# Select a random living hero
+	var living_heroes = heroes.filter(func(h): return not h.is_dead)
+	if living_heroes.is_empty():
+		log_event("No living heroes to experience the narrative event.")
+		return
+
+	var chosen_hero = NarrativeRoom.select_random_hero(living_heroes)
+
+	# Set popup title
+	narrative_room_situation_title.text = situation["title"]
+
+	# Clear previous content
+	for child in narrative_room_container.get_children():
+		child.queue_free()
+
+	# Display the situation text with hero name replaced
+	var situation_text = situation["text"].replace("{hero}", chosen_hero.combatant_name)
+	var text_label = RichTextLabel.new()
+	text_label.bbcode_enabled = true
+	text_label.fit_content = true
+	text_label.scroll_active = false
+	text_label.custom_minimum_size = Vector2(0, 80)
+	text_label.text = situation_text
+	text_label.add_theme_font_size_override("normal_font_size", 16)
+	narrative_room_container.add_child(text_label)
+
+	log_event(situation_text)
+
+	# Add spacer
+	var spacer = Control.new()
+	spacer.custom_minimum_size = Vector2(0, 20)
+	narrative_room_container.add_child(spacer)
+
+	# Apply outcomes and display results
+	var outcome_results = NarrativeRoom.apply_outcomes(chosen_hero, situation)
+
+	# Display outcome results
+	for result_text in outcome_results:
+		var result_label = RichTextLabel.new()
+		result_label.bbcode_enabled = true
+		result_label.fit_content = true
+		result_label.scroll_active = false
+		result_label.custom_minimum_size = Vector2(0, 25)
+		result_label.text = result_text
+		narrative_room_container.add_child(result_label)
+		log_event(result_text)
+
+	# Update display to reflect any changes (damage, healing, etc.)
+	update_combatants_display()
+
+	# Show popup with fade in
+	await fade_in_popup(narrative_room_popup)
+
+	# Countdown for 10 seconds
+	await countdown_popup(narrative_room_countdown, "Continuing in %d...", 10)
+
+	# Hide popup with fade out
+	await fade_out_popup(narrative_room_popup)
+
+	log_event("Narrative event complete.")
+	log_event("------------------------------------------------")
+
 func print_winner():
 	if heroes.all(func(c): return c.is_dead):
 		log_event("Monsters win! Rounds won: " + str(roundsWon) + ". Floors cleared: " + str(floorsCleared) )
@@ -1119,13 +1572,29 @@ func print_winner():
 		currentFloor.clearRoom()
 		if currentFloor.hasNextRoom():
 			log_event("Heroes win! Moving to next Room. Room " + str(currentFloor.current_room+1))
-			log_event("Monsters in room: " + str(currentFloor.getNextRoom()))
 			roundsWon += 1
 			update_floor_room_display()
+
+			# Check if next room is a narrative room
+			if currentFloor.is_current_room_narrative():
+				log_event("A narrative event awaits...")
+				await show_narrative_room()
+
+				# Check if any heroes died during narrative event
+				if heroes.all(func(c): return c.is_dead):
+					log_event("All heroes perished during the narrative event!")
+					pause_button.disabled = true
+					show_game_over_popup()
+					return
+			else:
+				log_event("Monsters in room: " + str(currentFloor.getNextRoom()))
 		else:
 			roundsWon += 1
 			floorsCleared += 1
 			log_event("Heroes win! All rooms cleared!")
+
+			# Loot room phase (before floor cleared popup)
+			await show_loot_room()
 
 			# Show floor cleared popup with countdown
 			await show_floor_cleared_popup()
@@ -1134,8 +1603,38 @@ func print_winner():
 			generate_new_floor()
 		log_event("------------------------------------------------")
 
-		generate_monsters()
-		simulate_battle()
+		# Only generate monsters if not a narrative room
+		if not currentFloor.is_current_room_narrative():
+			generate_monsters()
+			simulate_battle()
+		else:
+			# For narrative rooms, move to next room after event
+			currentFloor.clearRoom()
+			if currentFloor.hasNextRoom():
+				log_event("Moving to next Room. Room " + str(currentFloor.current_room+1))
+				log_event("Monsters in room: " + str(currentFloor.getNextRoom()))
+				roundsWon += 1
+				update_floor_room_display()
+				log_event("------------------------------------------------")
+				generate_monsters()
+				simulate_battle()
+			else:
+				# Floor complete after narrative room
+				roundsWon += 1
+				floorsCleared += 1
+				log_event("All rooms cleared!")
+
+				# Loot room phase (before floor cleared popup)
+				await show_loot_room()
+
+				# Show floor cleared popup with countdown
+				await show_floor_cleared_popup()
+
+				log_event("Moving to Floor " + str(floorsCleared+1))
+				generate_new_floor()
+				log_event("------------------------------------------------")
+				generate_monsters()
+				simulate_battle()
 
 func get_next_alive_index(from_index):
 	var alive = get_alive_combatants()
@@ -1150,6 +1649,30 @@ func simulate_turn(combatant):
 
 	var combatant_name = colorize_combatant_name(combatant)
 	log_event("Turn: " + combatant_name + " (" + str(combatant.stats["Health"]) + ")")
+
+	# Try Blood Moon healing effect
+	var blood_moon_result = WeatherManager.try_blood_moon_heal(all_combatants)
+	if blood_moon_result["triggered"]:
+		var target = blood_moon_result["target"]
+		var heal_amount = blood_moon_result["amount"]
+		var old_health = target.stats["Health"]
+		target.stats["Health"] = min(target.stats["Health"] + heal_amount, target.stats.get("MaxHealth", 999))
+		var actual_heal = target.stats["Health"] - old_health
+		log_event("Blood Moon: %s healed for %d HP!" % [colorize_combatant_name(target), actual_heal])
+		update_combatants_display()
+
+	# Try Lunar Eclipse ability exp boost
+	var lunar_result = WeatherManager.try_lunar_exp_boost(heroes)
+	if lunar_result["triggered"]:
+		var target = lunar_result["target"]
+		var exp_amount = lunar_result["amount"]
+		# Grant exp to a random ability
+		if target.abilities.size() > 0:
+			var random_ability = target.abilities[randi() % target.abilities.size()]
+			# Grant exp multiple times (grant_ability_exp gives 1 exp per call)
+			for i in exp_amount:
+				ExperienceManager.grant_ability_exp(target, random_ability["name"])
+			log_event("Lunar Eclipse: %s's %s gained %d ability EXP!" % [target.combatant_name, random_ability["name"], exp_amount])
 
 	# Process status effects at turn start
 	combatant.process_status_effects_turn_start()

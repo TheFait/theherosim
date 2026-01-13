@@ -59,6 +59,14 @@ func award_hero_exp(hero, amount: int):
 		# Increase EXP requirement
 		hero.stats["EXPToNextLevel"] = int(hero.stats["EXPToNextLevel"] * 1.5)
 
+		# 10% chance to gain a random elemental affinity
+		if randf() < 0.10:
+			var random_element = ElementalSystem.get_random_element()
+			if random_element != "" and not hero.elemental_affinities.has(random_element):
+				hero.elemental_affinities.append(random_element)
+				var element_text = ElementalSystem.get_colored_element_text(random_element)
+				EventBus.combat_log_entry.emit("%s gained elemental affinity: %s" % [hero.combatant_name, element_text])
+
 		EventBus.combat_log_entry.emit("[bgcolor=#FFD700][color=#000000]%s reached Level %d![/color][/bgcolor]" % [hero.combatant_name, hero.stats["Level"]])
 		EventBus.level_up.emit(hero, hero.stats["Level"])
 

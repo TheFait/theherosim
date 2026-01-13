@@ -1,0 +1,9 @@
+{
+	"player_item_slots": 4,
+	"loot_room_item_chance": 0.7,
+	"loot_room_resurrection_chance": 0.05,
+	"loot_room_resurrection_health_percent": 0.5,
+	"loot_room_display_duration": 5.0,
+	"item_exp_per_level": 100,
+	"item_exp_scaling": 1.5
+}

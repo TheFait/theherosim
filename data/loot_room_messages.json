@@ -1,0 +1,36 @@
+{
+	"item_found": [
+		"<hero> found <item>!",
+		"<hero> discovered <item>!",
+		"<hero> looted <item>!",
+		"<hero> acquired <item>!",
+		"<hero> obtained <item>!",
+		"<hero> stumbled upon <item>!",
+		"<hero> unearthed <item>!",
+		"<hero> claimed <item>!",
+		"A <rarity> treasure! <hero> found <item>!",
+		"<hero> scavenged <item> from the ruins!",
+		"<hero> spotted <item> hidden in a corner!",
+		"Lucky find! <hero> acquired <item>!",
+		"<hero> carefully retrieved <item>!",
+		"<hero> pulled <item> from a chest!",
+		"<hero> excavated <item> from the debris!"
+	],
+	"item_not_found": [
+		"<hero> found nothing.",
+		"<hero> came up empty-handed.",
+		"<hero> searched but found nothing of value.",
+		"<hero> found only dust and cobwebs.",
+		"<hero> struck out this time.",
+		"<hero> couldn't find anything useful.",
+		"<hero> had no luck searching.",
+		"The room yielded nothing for <hero>.",
+		"<hero> rummaged through junk to no avail.",
+		"<hero> found nothing but scraps.",
+		"<hero> walked away disappointed.",
+		"<hero> searched thoroughly but found zilch.",
+		"<hero> found a rusty nail. Not useful.",
+		"<hero> kicked some rocks around. Nothing here.",
+		"<hero> checked every corner. Still nothing."
+	]
+}

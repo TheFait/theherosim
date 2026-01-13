@@ -9,7 +9,9 @@
 			"evasion_bonus": 5
 		},
 		"rank_names": ["Grunt", "Scout", "Raider", "Chieftain"],
-		"abilities": ["Goblin Stab", "Poison Dart", "Sneaky Strike"]
+		"abilities": ["Goblin Stab", "Poison Dart", "Sneaky Strike"],
+		"treasure_packages": ["goblin_loot"],
+		"elemental_types": ["nature", "shadow", "none"]
 	},
 	{
 		"name": "Orc",
@@ -21,7 +23,9 @@
 			"evasion_bonus": -5
 		},
 		"rank_names": ["Warrior", "Berserker", "Warlord", "Champion"],
-		"abilities": ["Brutal Swing", "Rage Strike", "Intimidating Roar"]
+		"abilities": ["Brutal Swing", "Rage Strike", "Intimidating Roar"],
+		"treasure_packages": ["orc_loot"],
+		"elemental_types": ["earth", "dark", "none"]
 	},
 	{
 		"name": "Wolf",
@@ -33,7 +37,9 @@
 			"evasion_bonus": 8
 		},
 		"rank_names": ["Pup", "Hunter", "Alpha", "Dire Wolf"],
-		"abilities": ["Bite", "Pack Tactics", "Howl"]
+		"abilities": ["Bite", "Pack Tactics", "Howl"],
+		"treasure_packages": ["wolf_loot"],
+		"elemental_types": ["wind", "ice", "none"]
 	},
 	{
 		"name": "Dragon",
@@ -45,6 +51,8 @@
 			"evasion_bonus": 0
 		},
 		"rank_names": ["Wyrmling", "Drake", "Wyrm", "Ancient"],
-		"abilities": ["Dragon Breath", "Tail Sweep", "Wing Buffet"]
+		"abilities": ["Dragon Breath", "Tail Sweep", "Wing Buffet"],
+		"treasure_packages": ["dragon_loot"],
+		"elemental_types": ["fire", "lightning", "ice", "void"]
 	}
 ]

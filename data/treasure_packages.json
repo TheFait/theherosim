@@ -1,0 +1,105 @@
+[
+	{
+		"id": "goblin_loot",
+		"drop_chance": 0.15,
+		"treasure_specs": [
+			{
+				"items": [
+					{"item_id": "iron_sword", "weight": 40},
+					{"item_id": "leather_armor", "weight": 40},
+					{"item_id": "ring_of_strength", "weight": 20}
+				]
+			}
+		]
+	},
+	{
+		"id": "orc_loot",
+		"drop_chance": 0.20,
+		"treasure_specs": [
+			{
+				"items": [
+					{"item_id": "steel_sword", "weight": 30},
+					{"item_id": "chainmail_armor", "weight": 30},
+					{"item_id": "ring_of_strength", "weight": 25},
+					{"item_id": "amulet_of_health", "weight": 15}
+				]
+			}
+		]
+	},
+	{
+		"id": "wolf_loot",
+		"drop_chance": 0.18,
+		"treasure_specs": [
+			{
+				"items": [
+					{"item_id": "leather_armor", "weight": 50},
+					{"item_id": "boots_of_swiftness", "weight": 30},
+					{"item_id": "iron_sword", "weight": 20}
+				]
+			}
+		]
+	},
+	{
+		"id": "dragon_loot",
+		"drop_chance": 0.40,
+		"treasure_specs": [
+			{
+				"items": [
+					{"item_id": "dragons_blade", "weight": 10},
+					{"item_id": "mystic_staff", "weight": 20},
+					{"item_id": "plate_armor", "weight": 30},
+					{"item_id": "amulet_of_health", "weight": 40}
+				]
+			}
+		]
+	},
+	{
+		"id": "common_chest",
+		"drop_chance": 1.0,
+		"treasure_specs": [
+			{
+				"items": [
+					{"item_id": "iron_sword", "weight": 35},
+					{"item_id": "leather_armor", "weight": 35},
+					{"item_id": "steel_sword", "weight": 20},
+					{"item_id": "chainmail_armor", "weight": 10}
+				]
+			}
+		]
+	},
+	{
+		"id": "rare_chest",
+		"drop_chance": 1.0,
+		"treasure_specs": [
+			{
+				"items": [
+					{"item_id": "plate_armor", "weight": 25},
+					{"item_id": "mystic_staff", "weight": 25},
+					{"item_id": "amulet_of_health", "weight": 25},
+					{"item_id": "boots_of_swiftness", "weight": 15},
+					{"item_id": "dragons_blade", "weight": 10}
+				]
+			}
+		]
+	},
+	{
+		"id": "boss_loot",
+		"drop_chance": 0.80,
+		"treasure_specs": [
+			{
+				"items": [
+					{"item_id": "dragons_blade", "weight": 20},
+					{"item_id": "mystic_staff", "weight": 30},
+					{"item_id": "plate_armor", "weight": 30},
+					{"item_id": "amulet_of_health", "weight": 20}
+				]
+			},
+			{
+				"items": [
+					{"item_id": "boots_of_swiftness", "weight": 50},
+					{"item_id": "ring_of_strength", "weight": 50}
+				]
+			}
+		]
+	}
+]

@@ -1,0 +1,127 @@
+[
+	{
+		"id": "iron_sword",
+		"name": "Iron Sword",
+		"rarity": "Common",
+		"type": "Weapon",
+		"stats": {
+			"Attack": 10,
+			"Accuracy": 5
+		},
+		"max_level": 10,
+		"effect": null
+	},
+	{
+		"id": "steel_sword",
+		"name": "Steel Sword",
+		"rarity": "Uncommon",
+		"type": "Weapon",
+		"stats": {
+			"Attack": 20,
+			"Accuracy": 8
+		},
+		"max_level": 15,
+		"effect": null
+	},
+	{
+		"id": "leather_armor",
+		"name": "Leather Armor",
+		"rarity": "Common",
+		"type": "Armor",
+		"stats": {
+			"Defense": 8,
+			"MaxHealth": 20
+		},
+		"max_level": 10,
+		"effect": null
+	},
+	{
+		"id": "chainmail_armor",
+		"name": "Chainmail Armor",
+		"rarity": "Uncommon",
+		"type": "Armor",
+		"stats": {
+			"Defense": 15,
+			"MaxHealth": 40
+		},
+		"max_level": 15,
+		"effect": null
+	},
+	{
+		"id": "plate_armor",
+		"name": "Plate Armor",
+		"rarity": "Rare",
+		"type": "Armor",
+		"stats": {
+			"Defense": 25,
+			"MaxHealth": 80
+		},
+		"max_level": 20,
+		"effect": null
+	},
+	{
+		"id": "ring_of_strength",
+		"name": "Ring of Strength",
+		"rarity": "Uncommon",
+		"type": "Accessory",
+		"stats": {
+			"Attack": 15
+		},
+		"max_level": 12,
+		"effect": null,
+		"elemental_affinity": "earth"
+	},
+	{
+		"id": "amulet_of_health",
+		"name": "Amulet of Health",
+		"rarity": "Rare",
+		"type": "Accessory",
+		"stats": {
+			"MaxHealth": 50,
+			"Defense": 10
+		},
+		"max_level": 15,
+		"effect": null,
+		"elemental_affinity": "nature"
+	},
+	{
+		"id": "dragons_blade",
+		"name": "Dragon's Blade",
+		"rarity": "Legendary",
+		"type": "Weapon",
+		"stats": {
+			"Attack": 50,
+			"Accuracy": 20,
+			"CritChance": 10
+		},
+		"max_level": 30,
+		"effect": "burn",
+		"elemental_affinity": "fire"
+	},
+	{
+		"id": "mystic_staff",
+		"name": "Mystic Staff",
+		"rarity": "Epic",
+		"type": "Weapon",
+		"stats": {
+			"Attack": 35,
+			"Accuracy": 15
+		},
+		"max_level": 25,
+		"effect": null,
+		"elemental_affinity": "lightning"
+	},
+	{
+		"id": "boots_of_swiftness",
+		"name": "Boots of Swiftness",
+		"rarity": "Rare",
+		"type": "Accessory",
+		"stats": {
+			"Speed": 10,
+			"Evasion": 5
+		},
+		"max_level": 18,
+		"effect": null,
+		"elemental_affinity": "wind"
+	}
+]

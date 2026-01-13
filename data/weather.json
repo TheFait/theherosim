@@ -1,0 +1,48 @@
+[
+	{
+		"id": "clear",
+		"name": "Clear",
+		"effect_type": "none",
+		"description": "Clear skies. No special effects.",
+		"particle_effect": "clear_skies",
+		"weight": 10
+	},
+	{
+		"id": "fog",
+		"name": "Fog",
+		"effect_type": "accuracy_penalty",
+		"effect_value": -10,
+		"description": "Dense fog reduces accuracy for all combatants by 10.",
+		"particle_effect": "fog_particles",
+		"weight": 5
+	},
+	{
+		"id": "rain",
+		"name": "Rain",
+		"effect_type": "slip_chance",
+		"effect_value": 0.01,
+		"description": "Slippery conditions. 1% chance to slip and miss your turn when attacking.",
+		"particle_effect": "rain_particles",
+		"weight": 75
+	},
+	{
+		"id": "blood_moon",
+		"name": "Blood Moon",
+		"effect_type": "blood_heal",
+		"effect_value": 10,
+		"heal_chance": 0.01,
+		"description": "Eerie red moonlight. 1% chance at turn start to heal a random combatant for 10 HP.",
+		"particle_effect": "blood_moon_particles",
+		"weight": 5
+	},
+	{
+		"id": "lunar",
+		"name": "Lunar Eclipse",
+		"effect_type": "lunar_exp",
+		"effect_value": 4,
+		"lunar_chance": 0.01,
+		"description": "Mystical lunar energy. 1% chance at turn start to grant a random hero 4 ability experience.",
+		"particle_effect": "lunar_particles",
+		"weight": 5
+	}
+]

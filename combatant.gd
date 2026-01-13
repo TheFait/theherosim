@@ -3,10 +3,15 @@ class_name Combatant
 
 var combatant_name = ""
 var stats = {}
+var base_stats = {}  # Stats without item bonuses
 var abilities = []
 var is_dead = false
 var status_effects = []  # Array of StatusEffect objects
 var is_shiny = false  # 1% chance for monsters to be shiny (5x EXP)
+var equipped_items = []  # Array of item instances (Dictionary)
+var item_effects = []  # Array of active item effect names
+var element = ""  # Monster's elemental type (fire, water, ice, etc.)
+var elemental_affinities = []  # Hero's elemental affinities (Array of element IDs)
 
 func take_damage(amount):
 	var was_alive = not is_dead
@@ -106,3 +111,63 @@ func is_stunned() -> bool:
 			if effect.should_skip_turn():
 				return true
 	return false
+
+## Add an item to this combatant's equipment
+## If slots are full, randomly removes an item first
+## max_slots parameter should be passed from ItemManager
+func equip_item(item: Dictionary, max_slots: int) -> Dictionary:
+	var removed_item = null
+
+	# If slots are full, remove a random item
+	if equipped_items.size() >= max_slots:
+		var remove_index = randi() % equipped_items.size()
+		removed_item = equipped_items[remove_index]
+		equipped_items.remove_at(remove_index)
+
+	# Add new item
+	equipped_items.append(item)
+
+	# Add item effect if present
+	if item.has("effect") and item["effect"] != null and not item_effects.has(item["effect"]):
+		item_effects.append(item["effect"])
+
+	# Recalculate stats
+	recalculate_stats()
+
+	# Return info about what happened
+	return {"added": item, "removed": removed_item}
+
+## Recalculate stats by applying base stats + all item bonuses
+func recalculate_stats():
+	# Start with base stats
+	stats = base_stats.duplicate(true)
+
+	# Reset elemental affinities (will be rebuilt from items)
+	elemental_affinities.clear()
+
+	# Apply item bonuses
+	for item in equipped_items:
+		# Apply stat bonuses
+		if item.has("stats"):
+			for stat_name in item["stats"].keys():
+				var bonus = item["stats"][stat_name]
+				if stats.has(stat_name):
+					stats[stat_name] += bonus
+				else:
+					stats[stat_name] = bonus
+
+		# Apply elemental affinity if present
+		if item.has("elemental_affinity") and item["elemental_affinity"] != null:
+			var affinity = item["elemental_affinity"]
+			if not elemental_affinities.has(affinity):
+				elemental_affinities.append(affinity)
+
+	# Ensure Health doesn't exceed MaxHealth after recalculation
+	if stats.has("Health") and stats.has("MaxHealth"):
+		stats["Health"] = min(stats["Health"], stats["MaxHealth"])
+
+## Remove all items from this combatant
+func clear_items():
+	equipped_items.clear()
+	item_effects.clear()
+	recalculate_stats()

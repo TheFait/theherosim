@@ -1,0 +1,181 @@
+[
+	{
+		"id": "ancient_shrine",
+		"title": "Ancient Shrine",
+		"text": "{hero} discovers an ancient shrine glowing with mystical energy. As they approach, the shrine pulses with power and channels energy into them!",
+		"outcomes": [
+			{
+				"type": "heal",
+				"value": 30
+			},
+			{
+				"type": "ability_exp",
+				"value": 10
+			}
+		]
+	},
+	{
+		"id": "cursed_artifact",
+		"title": "Cursed Artifact",
+		"text": "{hero} finds a strange artifact emanating dark energy. Unable to resist, they touch it and feel a draining force sap their vitality!",
+		"outcomes": [
+			{
+				"type": "damage",
+				"value": 25
+			}
+		]
+	},
+	{
+		"id": "mysterious_merchant",
+		"title": "Mysterious Merchant",
+		"text": "{hero} encounters a hooded merchant who offers a powerful item in exchange for... nothing. Suspicious, but {hero} accepts the gift.",
+		"outcomes": [
+			{
+				"type": "item",
+				"item_pool": ["common_chest"]
+			}
+		]
+	},
+	{
+		"id": "healing_fountain",
+		"title": "Healing Fountain",
+		"text": "{hero} stumbles upon a pristine fountain with crystal-clear water. Drinking from it, they feel their wounds close and energy return!",
+		"outcomes": [
+			{
+				"type": "heal",
+				"value": 50
+			}
+		]
+	},
+	{
+		"id": "trap_room",
+		"title": "Trapped Chamber",
+		"text": "{hero} triggers a hidden trap! Poisoned darts shoot from the walls, and a blade swings from the ceiling. {hero} barely escapes but sustains injuries.",
+		"outcomes": [
+			{
+				"type": "damage",
+				"value": 40
+			}
+		]
+	},
+	{
+		"id": "skill_trainer",
+		"title": "Wandering Master",
+		"text": "{hero} meets a wandering master who offers to teach advanced techniques. After a brief training session, {hero} feels their abilities grow stronger!",
+		"outcomes": [
+			{
+				"type": "ability_exp",
+				"value": 15
+			}
+		]
+	},
+	{
+		"id": "treasure_cache",
+		"title": "Hidden Treasure",
+		"text": "{hero} discovers a hidden cache left behind by previous adventurers. Inside, they find valuable equipment!",
+		"outcomes": [
+			{
+				"type": "item",
+				"item_pool": ["common_chest"]
+			},
+			{
+				"type": "heal",
+				"value": 20
+			}
+		]
+	},
+	{
+		"id": "ability_swap",
+		"title": "Memory Crystal",
+		"text": "{hero} touches a glowing memory crystal. Visions flood their mind as forgotten techniques replace old knowledge. Their abilities shift!",
+		"outcomes": [
+			{
+				"type": "swap_ability"
+			}
+		]
+	},
+	{
+		"id": "dark_ritual",
+		"title": "Dark Ritual Site",
+		"text": "{hero} interrupts a dark ritual in progress. The backlash damages them, but they absorb some of the dark energy, strengthening their abilities.",
+		"outcomes": [
+			{
+				"type": "damage",
+				"value": 30
+			},
+			{
+				"type": "ability_exp",
+				"value": 20
+			}
+		]
+	},
+	{
+		"id": "meditation_chamber",
+		"title": "Meditation Chamber",
+		"text": "{hero} finds a peaceful chamber filled with incense. Meditating here, they achieve clarity and inner peace, fully restoring their vitality.",
+		"outcomes": [
+			{
+				"type": "heal",
+				"value": 100
+			}
+		]
+	},
+	{
+		"id": "weapon_rack",
+		"title": "Abandoned Armory",
+		"text": "{hero} discovers an abandoned armory with racks of equipment. Most is rusted, but one piece catches their eye...",
+		"outcomes": [
+			{
+				"type": "item",
+				"item_pool": ["common_chest"]
+			}
+		]
+	},
+	{
+		"id": "poison_gas",
+		"title": "Poison Gas Leak",
+		"text": "{hero} enters a room filled with toxic fumes. They hold their breath and escape, but not before inhaling some of the poison.",
+		"outcomes": [
+			{
+				"type": "damage",
+				"value": 35
+			}
+		]
+	},
+	{
+		"id": "ability_mastery",
+		"title": "Moment of Clarity",
+		"text": "{hero} has a sudden moment of clarity. All their training comes together, and they achieve mastery over one of their abilities!",
+		"outcomes": [
+			{
+				"type": "ability_level_up"
+			}
+		]
+	},
+	{
+		"id": "blessed_statue",
+		"title": "Blessed Statue",
+		"text": "{hero} prays at a statue of an ancient hero. The statue glows and blesses {hero} with divine energy, healing their wounds and strengthening their resolve.",
+		"outcomes": [
+			{
+				"type": "heal",
+				"value": 40
+			},
+			{
+				"type": "ability_exp",
+				"value": 8
+			}
+		]
+	},
+	{
+		"id": "collapsing_floor",
+		"title": "Unstable Floor",
+		"text": "{hero} steps on an unstable floor that gives way! They fall into a spike pit below. Climbing out, battered and bleeding...",
+		"outcomes": [
+			{
+				"type": "damage",
+				"value": 45
+			}
+		]
+	}
+]

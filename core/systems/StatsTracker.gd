@@ -91,6 +91,15 @@ func generate_tooltip(hero) -> String:
 	tooltip += "Damage Dealt: %d\n" % int(stats["total_damage_dealt"])
 	tooltip += "Healing Done: %d\n" % int(stats["total_healing_done"])
 	tooltip += "Damage Taken: %d\n" % int(stats["total_damage_taken"])
+
+	# Equipped items
+	if hero.equipped_items.size() > 0:
+		tooltip += "\n=== Equipped Items (%d/%d) ===\n" % [hero.equipped_items.size(), ItemManager.get_player_item_slots()]
+		for item in hero.equipped_items:
+			tooltip += "%s (Lv. %d)\n" % [item["name"], item["current_level"]]
+			for stat_name in item["stats"].keys():
+				tooltip += "  +%d %s\n" % [item["stats"][stat_name], stat_name]
+
 	tooltip += "\n=== Abilities ===\n"
 
 	# Abilities and usage
@@ -98,7 +107,13 @@ func generate_tooltip(hero) -> String:
 		var ability_name = ability["name"]
 		var usage_count = stats["ability_usage"].get(ability_name, 0)
 		var ability_level = stats["ability_levels"].get(ability_name, 1)
-		tooltip += "%s (Lv. %d): %d uses\n" % [ability_name, ability_level, usage_count]
+
+		# Add element icon if ability has one
+		var element_icon = ""
+		if ability.has("element") and ability["element"] != "":
+			element_icon = ElementalSystem.get_element_icon(ability["element"]) + " "
+
+		tooltip += "%s%s (Lv. %d): %d uses\n" % [element_icon, ability_name, ability_level, usage_count]
 
 	return tooltip
 
