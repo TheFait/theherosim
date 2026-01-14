@@ -1,5 +1,10 @@
 extends Node
 
+# Module preloads
+const CombatSimulator = preload("res://core/combat/CombatSimulator.gd")
+const GameUI = preload("res://core/ui/GameUI.gd")
+const RoomManager = preload("res://core/rooms/RoomManager.gd")
+
 const ABILITY_PATH = "res://data/abilities.json"
 const MONSTER_ABILITY_PATH = "res://data/monster_abilities.json"
 const MONSTER_FAMILY_PATH = "res://data/monster_families.json"
@@ -46,6 +51,15 @@ var is_paused = false
 var current_turn_combatant = null
 var last_ability_targets = []
 
+# Loot room chest voting
+var loot_room_selected_chest = -1  # -1 means no vote yet, will be randomly selected at 5 seconds
+var loot_room_chest_votes = [0, 0, 0]  # Vote counts for each chest (for future Twitch integration)
+
+# Module instances
+var combat_simulator: CombatSimulator
+var game_ui: GameUI
+var room_manager: RoomManager
+
 @onready var log_box = $LogBoxPanel/LogBox
 @onready var start_button = $StartButton
 @onready var pause_button = $PauseButton
@@ -68,12 +82,41 @@ var last_ability_targets = []
 @onready var floor_cleared_floor_label = $FloorClearedPopup/VBoxContainer/FloorLabel
 @onready var loot_room_popup = $LootRoomPopup
 @onready var loot_room_container = $LootRoomPopup/VBoxContainer/ScrollContainer/LootContainer
+@onready var loot_room_countdown = $LootRoomPopup/VBoxContainer/CountdownLabel
+@onready var loot_room_chest1 = $LootRoomPopup/VBoxContainer/ChestsContainer/Chest1
+@onready var loot_room_chest2 = $LootRoomPopup/VBoxContainer/ChestsContainer/Chest2
+@onready var loot_room_chest3 = $LootRoomPopup/VBoxContainer/ChestsContainer/Chest3
 @onready var narrative_room_popup = $NarrativeRoomPopup
 @onready var narrative_room_container = $NarrativeRoomPopup/VBoxContainer/ScrollContainer/NarrativeContainer
 @onready var narrative_room_situation_title = $NarrativeRoomPopup/VBoxContainer/SituationTitleLabel
 @onready var narrative_room_countdown = $NarrativeRoomPopup/VBoxContainer/CountdownLabel
 
 func _ready():
+	# Initialize modules
+	combat_simulator = CombatSimulator.new()
+	game_ui = GameUI.new()
+	room_manager = RoomManager.new()
+
+	# Setup combat simulator callbacks
+	combat_simulator.on_log_event = log_event
+	combat_simulator.on_combatant_display_update = func(): game_ui.update_combatants_display(heroes, monsters, current_turn_combatant)
+	combat_simulator.on_give_item_to_hero = give_item_to_hero
+	combat_simulator.on_colorize_combatant_name = colorize_combatant_name
+
+	# Setup GameUI
+	game_ui.setup({
+		"combatants_list": combatants_list,
+		"monsters_list": monsters_list,
+		"floor_label": floor_label,
+		"room_label": room_label,
+		"weather_label": weather_label
+	})
+
+	# Setup room manager callbacks
+	room_manager.on_log_event = log_event
+	room_manager.on_give_item_to_hero = give_item_to_hero
+	room_manager.on_update_combatants_display = func(): game_ui.update_combatants_display(heroes, monsters, current_turn_combatant)
+
 	start_button.pressed.connect(on_start_pressed)
 	pause_button.pressed.connect(on_pause_pressed)
 	game_over_restart_button.pressed.connect(on_restart_pressed)
@@ -181,61 +224,48 @@ func apply_elemental_damage(base_damage: float, user: Combatant, target: Combata
 	return {"damage": final_damage, "text": multiplier_text}
 
 func update_floor_room_display():
-	floor_label.text = "Floor: %d" % (floorsCleared + 1)
-	room_label.text = "Room: %d / %d" % [currentFloor.current_room + 1, currentFloor.num_rooms]
+	if game_ui:
+		game_ui.update_floor_room_display(floorsCleared + 1, currentFloor.current_room + 1)
+	else:
+		floor_label.text = "Floor: %d" % (floorsCleared + 1)
+		room_label.text = "Room: %d / %d" % [currentFloor.current_room + 1, currentFloor.num_rooms]
 
 func update_weather_display():
 	var weather_name = WeatherManager.get_weather_display()
 	var weather_desc = WeatherManager.get_weather_description()
-	weather_label.text = "Weather: %s" % weather_name
+
+	if game_ui:
+		game_ui.update_weather_display(weather_name)
+	else:
+		weather_label.text = "Weather: %s" % weather_name
+
 	weather_label.tooltip_text = weather_desc
 
-	# Add particle effects
+	# Add particle effects (always update regardless of game_ui)
 	if WeatherManager.has_particle_effect():
 		var particle_name = WeatherManager.get_particle_effect()
 		# Clear existing particles
 		for child in weather_particles.get_children():
 			child.queue_free()
 		# Load and add new particle system
-		var particles = load("res://particles/%s.tscn" % particle_name).instantiate()
-		weather_particles.add_child(particles)
+		var particle_path = "res://particles/%s.tscn" % particle_name
+		if ResourceLoader.exists(particle_path):
+			var particles = load(particle_path).instantiate()
+			weather_particles.add_child(particles)
+	else:
+		# Clear particles for non-particle weather (like clear)
+		for child in weather_particles.get_children():
+			child.queue_free()
 
 func generate_hero_tooltip(hero):
 	# Use StatsTracker to generate tooltip
 	return StatsTracker.generate_tooltip(hero)
 
+## Update combatants display - delegates to GameUI module
 func update_combatants_display():
-	# Clear existing children
-	for child in combatants_list.get_children():
-		child.queue_free()
-
-	for child in monsters_list.get_children():
-		child.queue_free()
-
-	# Add Heroes header
-	var heroes_label = Label.new()
-	heroes_label.text = "HEROES"
-	heroes_label.add_theme_font_size_override("font_size", 16)
-	combatants_list.add_child(heroes_label)
-
-	# Add each hero
-	for hero in heroes:
-		create_combatant_display(hero)
-
-	# Add spacing
-	var spacer = Control.new()
-	spacer.custom_minimum_size = Vector2(0, 10)
-	combatants_list.add_child(spacer)
-
-	# Add Monsters header
-	var monsters_label = Label.new()
-	monsters_label.text = "MONSTERS"
-	monsters_label.add_theme_font_size_override("font_size", 16)
-	monsters_list.add_child(monsters_label)
-
-	# Add each monster
-	for monster in monsters:
-		create_monster_display(monster)
+	"""Wrapper function that delegates to GameUI module for delta updates"""
+	if game_ui:
+		game_ui.update_combatants_display(heroes, monsters, current_turn_combatant)
 
 func create_combatant_display(combatant):
 	var container = VBoxContainer.new()
@@ -554,18 +584,42 @@ func generate_combatants():
 		# Initialize hero statistics via StatsTracker
 		StatsTracker.initialize_hero(hero)
 
-	var num_monsters = currentFloor.getNextRoom()
+	# Use the floor's monster family for all monsters
+	var family_name = currentFloor.monster_family if currentFloor else "Goblin"
+	var family = get_monster_family(family_name)
+	var num_monsters = currentFloor.getNextRoom() if currentFloor else 3
 
 	for i in num_monsters:
 		var monster = Combatant.new()
-		# Roll for random family and rank based on floor probabilities
-		var family_name = roll_monster_family()
+		# Roll rank based on room progression (first room = mostly low ranks)
 		var rank = roll_monster_rank()
-		var family = get_monster_family(family_name)
 		var rank_name = family["rank_names"][rank]
-		monster.combatant_name = "%s %s" % [rank_name, family_name]
+
+		# Store family name for coloring
+		monster.family_name = family_name
+
+		# 1% chance to be shiny (5x EXP)
+		monster.is_shiny = randf() < 0.01
+
+		if monster.is_shiny:
+			monster.combatant_name = "Shiny %s %s" % [rank_name, family_name]
+		else:
+			monster.combatant_name = "%s %s" % [rank_name, family_name]
+
 		monster.stats = random_monster_stats(family_name, rank)
+
+		# Multiply EXP by 5 if shiny
+		if monster.is_shiny:
+			monster.stats["EXP"] = int(monster.stats["EXP"] * 5)
+
 		monster.abilities = pick_monster_abilities(family_name)
+
+		# Assign random element from family's elemental_types
+		if family.has("elemental_types") and not family["elemental_types"].is_empty():
+			var elemental_types = family["elemental_types"]
+			var random_element = elemental_types[randi() % elemental_types.size()]
+			monster.element = random_element if random_element != "none" else ""
+
 		monsters.append(monster)
 
 	all_combatants = heroes + monsters
@@ -573,7 +627,14 @@ func generate_combatants():
 	# Initialize CombatantCache with new combatants
 	CombatantCache.initialize(heroes, monsters)
 
-	update_combatants_display()
+	# Initialize combat simulator with combatants
+	if combat_simulator:
+		combat_simulator.set_combatants(heroes, monsters)
+
+	# Full rebuild of UI on initial generation
+	if game_ui:
+		game_ui.rebuild_combatants_display(heroes, monsters, current_turn_combatant)
+
 	update_weather_display()
 
 func generate_monsters():
@@ -583,13 +644,21 @@ func generate_monsters():
 	var weather_id = WeatherManager.roll_random_weather()
 	WeatherManager.set_weather(weather_id)
 
-	for i in 3:
+	# Use the floor's monster family for all monsters
+	var family_name = currentFloor.monster_family if currentFloor else "Goblin"
+	var family = get_monster_family(family_name)
+
+	# Get number of monsters for this room
+	var num_monsters = currentFloor.getNextRoom() if currentFloor else 3
+
+	for i in num_monsters:
 		var monster = Combatant.new()
-		# Roll for random family and rank based on floor probabilities
-		var family_name = roll_monster_family()
+		# Roll rank based on room progression (early = low ranks, late = higher ranks)
 		var rank = roll_monster_rank()
-		var family = get_monster_family(family_name)
 		var rank_name = family["rank_names"][rank]
+
+		# Store family name for coloring
+		monster.family_name = family_name
 
 		# 1% chance to be shiny (5x EXP)
 		monster.is_shiny = randf() < 0.01
@@ -622,20 +691,32 @@ func generate_monsters():
 	# Reinitialize CombatantCache with new monsters
 	CombatantCache.initialize(heroes, monsters)
 
-	update_combatants_display()
+	# Update combat simulator with new monsters
+	if combat_simulator:
+		combat_simulator.set_combatants(heroes, monsters)
+
+	# Full rebuild of UI when generating new monsters
+	if game_ui:
+		game_ui.rebuild_combatants_display(heroes, monsters, current_turn_combatant)
+
 	update_weather_display()
 
 func generate_new_floor():
-	# Generate new probability tables for this floor
-	generate_family_probabilities()
-	generate_rank_probabilities()
+	# Pick a random monster family for this entire floor
+	var family_names = []
+	for family in AbilityDatabase.families:
+		family_names.append(family["name"])
+	var floor_family = family_names[randi() % family_names.size()]
 
-	# Use a placeholder for floor generation (no longer tied to single family)
-	currentFloor = Floor.new(randi()%4+2, "Mixed")
+	# Generate floor with 2-10 rooms
+	var num_rooms = randi_range(2, 10)
+	currentFloor = Floor.new(num_rooms, floor_family)
+
 	log_event("------------------------------------------------")
 	log_event("------------------------------------------------")
-	log_event("Starting Floor: " + str(floorsCleared+1) + ". Number of rooms: " + str(currentFloor.num_rooms))
-	log_event("Monsters in room 1: " + str(currentFloor.getNextRoom()))
+	log_event("Starting Floor: %d - %s Territory" % [floorsCleared + 1, floor_family])
+	log_event("Number of rooms: %d" % currentFloor.num_rooms)
+	log_event("Monsters in room 1: %d" % currentFloor.getNextRoom())
 	log_event("------------------------------------------------")
 	log_event("------------------------------------------------")
 	update_floor_room_display()
@@ -694,10 +775,35 @@ func roll_monster_family():
 	return family_probabilities[-1]["family"]  # Fallback to last family
 
 func roll_monster_rank():
-	var roll = randf()
-	for prob in rank_probabilities:
-		if roll <= prob["cumulative"]:
-			return prob["rank"]
+	"""Roll monster rank based on room progression.
+	Early rooms favor lower ranks, later rooms favor higher ranks.
+	Even in late rooms, there's still a good chance of low-rank monsters."""
+	var progression = currentFloor.get_room_progression() if currentFloor else 0.0
+
+	# Base weights for ranks 0-3 (lower index = more common base)
+	# These weights shift based on progression
+	var weights = [0.0, 0.0, 0.0, 0.0]
+
+	# Early rooms (progression ~0): mostly rank 0-1
+	# Late rooms (progression ~1): more rank 2-3 but still some 0-1
+	weights[0] = 50.0 - (progression * 25.0)  # 50 -> 25 (always common)
+	weights[1] = 30.0 - (progression * 10.0)  # 30 -> 20 (still common)
+	weights[2] = 15.0 + (progression * 20.0)  # 15 -> 35 (becomes more common)
+	weights[3] = 5.0 + (progression * 15.0)   # 5 -> 20 (becomes possible)
+
+	# Calculate total and roll
+	var total_weight = 0.0
+	for w in weights:
+		total_weight += w
+
+	var roll = randf() * total_weight
+	var cumulative = 0.0
+
+	for i in 4:
+		cumulative += weights[i]
+		if roll <= cumulative:
+			return i
+
 	return 0  # Fallback to rank 0
 
 func random_monster_stats(family_name, rank):
@@ -849,30 +955,14 @@ func is_battle_over():
 	# Use cache to check if all combatants of a team are dead
 	return CombatantCache.are_all_dead(heroes) or CombatantCache.are_all_dead(monsters)
 
-func get_team(combatant):
-	return heroes if heroes.has(combatant) else monsters
-
-func get_enemy_team(combatant):
-	return monsters if heroes.has(combatant) else heroes
-
+## Choose target - delegates to CombatSimulator module
 func choose_target(combatant, ability):
-	var num_targets = ability.get("num_targets", 1)
-	var target_type = ability.get("target", "enemy")
+	"""Wrapper that delegates to CombatSimulator module"""
+	if combat_simulator:
+		return combat_simulator.choose_target(combatant, ability)
 
-	# Use cached alive combatants instead of filtering every time
-	var potential_targets = []
-	if target_type == "enemy":
-		potential_targets = CombatantCache.get_alive_enemies(combatant)
-	else:  # ally
-		potential_targets = CombatantCache.get_alive_allies(combatant)
-
-	if potential_targets.is_empty():
-		return []
-
-	# Shuffle and take up to num_targets
-	potential_targets.shuffle()
-	var actual_num = min(num_targets, potential_targets.size())
-	return potential_targets.slice(0, actual_num)
+	# Fallback
+	return []
 
 func check_accuracy(user, intended_zone):
 	var accuracy_roll = randi() % 100 + 1
@@ -920,7 +1010,93 @@ func apply_status_effect_to_target(target, effect_type: String, params: Dictiona
 		target.apply_status_effect(effect)
 		log_event("%s is affected by %s!" % [target.combatant_name, effect.get_display_text()])
 
+## Helper function to apply damage/healing to a single target (eliminates 200+ lines of duplication)
+func _apply_ability_to_target(user, ability, target, hit_zone: int = -1) -> bool:
+	"""
+	Apply ability damage/healing to a single target.
+	Returns true if the target died from this attack.
+	"""
+	var min_dmg = ability.get("min_damage", 0)
+	var max_dmg = ability.get("max_damage", 0)
+	var number_attacks = ability.get("number_attacks", 1)
+
+	# Roll damage multiple times based on number_attacks
+	var total_damage = 0.0
+	var damage_rolls = []
+	for i in number_attacks:
+		var dmg = randf_range(min_dmg, max_dmg)
+		total_damage += dmg
+		var is_max_damage = abs(dmg - max_dmg) < 0.01
+		var damage_text = str(int(abs(dmg)))
+		if is_max_damage:
+			damage_text = "[b][i]" + damage_text + "[/i][/b]"
+		damage_rolls.append(damage_text)
+
+	# Apply elemental multipliers
+	var elemental_result = apply_elemental_damage(total_damage, user, target, ability)
+	total_damage = elemental_result["damage"]
+	var elemental_text = elemental_result["text"]
+
+	# Apply damage to target
+	var result = target.take_damage(total_damage)
+	var just_died = result["died"]
+	var actual_damage = result["actual_damage"]
+	var damage_type = "health" if total_damage < 0 else "damage"
+
+	# Emit events for damage/healing tracking
+	if total_damage > 0:
+		EventBus.combatant_damaged.emit(user, target, total_damage, actual_damage)
+	else:
+		EventBus.combatant_healed.emit(user, target, abs(actual_damage))
+
+	# Format damage rolls display
+	var damage_display = ""
+	if number_attacks == 1:
+		damage_display = "%s %s" % [damage_rolls[0], damage_type]
+	else:
+		damage_display = "(%s) = %d %s" % [" + ".join(damage_rolls), int(abs(total_damage)), damage_type]
+
+	# Log action
+	var user_name = colorize_combatant_name(user)
+	var target_name = colorize_combatant_name(target)
+
+	var action = ""
+	if hit_zone >= 0:
+		action = "%s uses %s on %s hitting zone %d (%s) for %s%s." % [
+			user_name, ability["name"], target_name, hit_zone, HIT_ZONES[hit_zone]["name"], damage_display, elemental_text
+		]
+	else:
+		action = "%s uses %s on %s for %s%s." % [
+			user_name, ability["name"], target_name, damage_display, elemental_text
+		]
+	log_event(action)
+
+	# Log death with red background and emit death event
+	if just_died:
+		log_event("[bgcolor=#8B0000][color=#FFFFFF]%s has died![/color][/bgcolor]" % colorize_combatant_name(target))
+		EventBus.combatant_died.emit(target, user)
+
+	# Apply status effect if the ability has one
+	if ability.has("status_effect") and not target.is_dead:
+		var status_data = ability["status_effect"]
+		apply_status_effect_to_target(target, status_data["type"], status_data)
+
+	return just_died
+
+## Apply ability - delegates to CombatSimulator module
 func apply_ability(user, ability, targets):
+	"""Wrapper that delegates to CombatSimulator module"""
+	last_ability_targets = targets
+	if combat_simulator:
+		combat_simulator.apply_ability(user, ability, targets)
+		return
+
+	# Fallback if combat_simulator not initialized (shouldn't happen)
+	log_event("ERROR: CombatSimulator not initialized!")
+	return
+
+## Legacy apply_ability implementation (kept for reference, not used)
+func _legacy_apply_ability(user, ability, targets):
 	last_ability_targets = targets
 	var accuracy_mode = ability.get("accuracy_mode", "all")
 	var number_attacks = ability.get("number_attacks", 1)
@@ -933,68 +1109,14 @@ func apply_ability(user, ability, targets):
 
 	if accuracy_mode == "none":
 		# No accuracy check - all targets get hit
+		# Emit ability usage event (only once per ability use)
+		EventBus.ability_used.emit(user, ability, targets)
+
 		for target in targets:
 			# Skip if target died during this ability (e.g., multi-target attack)
 			if target.is_dead:
 				continue
-
-			var min_dmg = ability.get("min_damage", 0)
-			var max_dmg = ability.get("max_damage", 0)
-			var user_name = colorize_combatant_name(user)
-			var target_name = colorize_combatant_name(target)
-
-			# Roll damage multiple times based on number_attacks
-			var total_damage = 0.0
-			var damage_rolls = []
-			for i in number_attacks:
-				var dmg = randf_range(min_dmg, max_dmg)
-				total_damage += dmg
-				var is_max_damage = abs(dmg - max_dmg) < 0.01
-				var damage_text = str(int(abs(dmg)))
-				if is_max_damage:
-					damage_text = "[b][i]" + damage_text + "[/i][/b]"
-				damage_rolls.append(damage_text)
-
-			# Apply elemental multipliers
-			var elemental_result = apply_elemental_damage(total_damage, user, target, ability)
-			total_damage = elemental_result["damage"]
-			var elemental_text = elemental_result["text"]
-
-			var result = target.take_damage(total_damage)
-			var just_died = result["died"]
-			var actual_damage = result["actual_damage"]
-			var damage_type = "health" if total_damage < 0 else "damage"
-
-			# Emit events for damage/healing tracking
-			if total_damage > 0:
-				EventBus.combatant_damaged.emit(user, target, total_damage, actual_damage)
-			else:
-				EventBus.combatant_healed.emit(user, target, abs(actual_damage))
-
-			# Emit ability usage event (only once per ability use, not per target)
-			if target == targets[0]:  # Only on first target
-				EventBus.ability_used.emit(user, ability, targets)
-
-			# Format damage rolls display
-			var damage_display = ""
-			if number_attacks == 1:
-				damage_display = "%s %s" % [damage_rolls[0], damage_type]
-			else:
-				damage_display = "(%s) = %d %s" % [" + ".join(damage_rolls), int(abs(total_damage)), damage_type]
-
-			var action = "%s uses %s on %s for %s%s." % [
-				user_name, ability["name"], target_name, damage_display, elemental_text
-			]
-			log_event(action)
-			# Log death with red background and emit death event
-			if just_died:
-				log_event("[bgcolor=#8B0000][color=#FFFFFF]%s has died![/color][/bgcolor]" % colorize_combatant_name(target))
-				EventBus.combatant_died.emit(target, user)
-
-			# Apply status effect if the ability has one
-			if ability.has("status_effect") and not target.is_dead:
-				var status_data = ability["status_effect"]
-				apply_status_effect_to_target(target, status_data["type"], status_data)
+			_apply_ability_to_target(user, ability, target)
 
 	elif accuracy_mode == "one":
 		# One accuracy check for all targets - all hit or all miss
@@ -1022,59 +1144,7 @@ func apply_ability(user, ability, targets):
 				# Skip if target died during this ability (e.g., multi-target attack)
 				if target.is_dead:
 					continue
-
-				var min_dmg = ability.get("min_damage", 0)
-				var max_dmg = ability.get("max_damage", 0)
-				var target_name = colorize_combatant_name(target)
-
-				# Roll damage multiple times based on number_attacks
-				var total_damage = 0.0
-				var damage_rolls = []
-				for i in number_attacks:
-					var dmg = randf_range(min_dmg, max_dmg)
-					total_damage += dmg
-					var is_max_damage = abs(dmg - max_dmg) < 0.01
-					var damage_text = str(int(abs(dmg)))
-					if is_max_damage:
-						damage_text = "[b][i]" + damage_text + "[/i][/b]"
-					damage_rolls.append(damage_text)
-
-				# Apply elemental multipliers
-				var elemental_result = apply_elemental_damage(total_damage, user, target, ability)
-				total_damage = elemental_result["damage"]
-				var elemental_text = elemental_result["text"]
-
-				var result = target.take_damage(total_damage)
-				var just_died = result["died"]
-				var actual_damage = result["actual_damage"]
-				var damage_type = "health" if total_damage < 0 else "damage"
-
-				# Emit events for damage/healing tracking
-				if total_damage > 0:
-					EventBus.combatant_damaged.emit(user, target, total_damage, actual_damage)
-				else:
-					EventBus.combatant_healed.emit(user, target, abs(actual_damage))
-
-				# Format damage rolls display
-				var damage_display = ""
-				if number_attacks == 1:
-					damage_display = "%s %s" % [damage_rolls[0], damage_type]
-				else:
-					damage_display = "(%s) = %d %s" % [" + ".join(damage_rolls), int(abs(total_damage)), damage_type]
-
-				var action = "%s uses %s on %s hitting zone %d (%s) for %s%s." % [
-					user_name, ability["name"], target_name, final_zone, HIT_ZONES[final_zone]["name"], damage_display, elemental_text
-				]
-				log_event(action)
-				# Log death with red background and emit death event
-				if just_died:
-					log_event("[bgcolor=#8B0000][color=#FFFFFF]%s has died![/color][/bgcolor]" % colorize_combatant_name(target))
-					EventBus.combatant_died.emit(target, user)
-
-				# Apply status effect if the ability has one
-				if ability.has("status_effect") and not target.is_dead:
-					var status_data = ability["status_effect"]
-					apply_status_effect_to_target(target, status_data["type"], status_data)
+				_apply_ability_to_target(user, ability, target, final_zone)
 
 	else:  # accuracy_mode == "all"
 		# Emit ability usage event once for the whole attack
@@ -1384,22 +1454,94 @@ func countdown_popup(countdown_label: Label, format_string: String, seconds: int
 		countdown_label.text = format_string % i
 		await get_tree().create_timer(1.0).timeout
 
+## Set the chest that will be opened (for Twitch voting integration)
+## chest_number: 0, 1, or 2 for chests 1, 2, or 3
+func set_loot_chest_selection(chest_number: int):
+	"""Set which chest will be opened. Call this from Twitch integration."""
+	if room_manager:
+		room_manager.set_loot_chest_selection(chest_number)
+	else:
+		if chest_number >= 0 and chest_number < 3:
+			loot_room_selected_chest = chest_number
+			log_event("Chest %d has been selected!" % (chest_number + 1))
+
+## Vote for a chest (for Twitch voting integration)
+## chest_number: 0, 1, or 2 for chests 1, 2, or 3
+func vote_for_loot_chest(chest_number: int):
+	"""Add a vote for a chest. Call this from Twitch chat integration."""
+	if room_manager:
+		room_manager.vote_for_loot_chest(chest_number)
+	else:
+		if chest_number >= 0 and chest_number < 3:
+			loot_room_chest_votes[chest_number] += 1
+
 func show_loot_room():
-	"""Handle loot room after floor completion"""
+	"""Handle loot room after floor completion with chest selection"""
 	log_event("------------------------------------------------")
-	log_event("LOOT ROOM")
+	log_event("LOOT ROOM - CHOOSE YOUR CHEST")
 	log_event("------------------------------------------------")
 
-	var display_duration = ItemManager.get_loot_room_display_duration()
-	var item_chance = ItemManager.get_loot_room_item_chance()
-	var resurrection_chance = ItemManager.get_loot_room_resurrection_chance()
-	var resurrection_health_percent = ItemManager.get_loot_room_resurrection_health_percent()
+	# Reset chest voting state
+	loot_room_selected_chest = -1
+	loot_room_chest_votes = [0, 0, 0]
 
 	# Clear previous loot results
 	for child in loot_room_container.get_children():
 		child.queue_free()
 
-	# Process each hero and build UI
+	# Reset chest colors to brown (default)
+	var brown_style = StyleBoxFlat.new()
+	brown_style.bg_color = Color(0.4, 0.25, 0.1)  # Brown color
+	brown_style.border_width_left = 2
+	brown_style.border_width_top = 2
+	brown_style.border_width_right = 2
+	brown_style.border_width_bottom = 2
+	brown_style.border_color = Color(0.5, 0.5, 0.5)
+
+	loot_room_chest1.add_theme_stylebox_override("panel", brown_style.duplicate())
+	loot_room_chest2.add_theme_stylebox_override("panel", brown_style.duplicate())
+	loot_room_chest3.add_theme_stylebox_override("panel", brown_style.duplicate())
+
+	# Show popup with fade in
+	await fade_in_popup(loot_room_popup)
+
+	log_event("Choose a chest! Time remaining: 15 seconds")
+
+	# Countdown from 15 to 6 (10 seconds)
+	for i in range(15, 5, -1):
+		loot_room_countdown.text = "Time remaining: %d" % i
+		await get_tree().create_timer(1.0).timeout
+
+	# At 5 seconds, select a chest if not already selected
+	if loot_room_selected_chest == -1:
+		# Random selection for now (will be based on Twitch votes later)
+		loot_room_selected_chest = randi() % 3
+		log_event("Chest %d randomly selected!" % (loot_room_selected_chest + 1))
+
+	# Change selected chest to green
+	var green_style = StyleBoxFlat.new()
+	green_style.bg_color = Color(0.1, 0.6, 0.1)  # Green color
+	green_style.border_width_left = 2
+	green_style.border_width_top = 2
+	green_style.border_width_right = 2
+	green_style.border_width_bottom = 2
+	green_style.border_color = Color(0.2, 0.8, 0.2)
+
+	match loot_room_selected_chest:
+		0:
+			loot_room_chest1.add_theme_stylebox_override("panel", green_style)
+		1:
+			loot_room_chest2.add_theme_stylebox_override("panel", green_style)
+		2:
+			loot_room_chest3.add_theme_stylebox_override("panel", green_style)
+
+	log_event("Chest %d opened!" % (loot_room_selected_chest + 1))
+
+	# Roll loot for each living hero
+	var item_chance = ItemManager.get_loot_room_item_chance()
+	var resurrection_chance = ItemManager.get_loot_room_resurrection_chance()
+	var resurrection_health_percent = ItemManager.get_loot_room_resurrection_health_percent()
+
 	for hero in heroes:
 		var hero_section = VBoxContainer.new()
 		hero_section.custom_minimum_size = Vector2(0, 10)
@@ -1418,7 +1560,7 @@ func show_loot_room():
 				hero.is_dead = false
 				name_label.text = "=== %s ===" % hero.combatant_name
 				var result_label = Label.new()
-				result_label.text = "[color=#00FF00]RESURRECTED with %d HP![/color]" % resurrection_health
+				result_label.text = "RESURRECTED with %d HP!" % resurrection_health
 				result_label.set("theme_override_colors/font_color", Color(0, 1, 0))
 				hero_section.add_child(result_label)
 				log_event("%s was resurrected with %d HP!" % [hero.combatant_name, resurrection_health])
@@ -1474,13 +1616,13 @@ func show_loot_room():
 
 		loot_room_container.add_child(hero_section)
 
-	# Show popup with fade in
-	await fade_in_popup(loot_room_popup)
+	# Update display to show loot results
+	update_combatants_display()
 
-	log_event("Loot room will close in %d seconds..." % int(display_duration))
-
-	# Wait for the display duration
-	await get_tree().create_timer(display_duration).timeout
+	# Countdown remaining 5 seconds
+	for i in range(5, 0, -1):
+		loot_room_countdown.text = "Continuing in %d..." % i
+		await get_tree().create_timer(1.0).timeout
 
 	# Hide popup with fade out
 	await fade_out_popup(loot_room_popup)

@@ -9,6 +9,15 @@ const Weather = preload("res://core/systems/Weather.gd")
 
 const WEATHER_PATH = "res://data/weather.json"
 
+# Weather emoji icons
+const WEATHER_ICONS = {
+	"clear": "☀️",
+	"fog": "🌫️",
+	"rain": "🌧️",
+	"blood_moon": "🌑",
+	"lunar": "🌙"
+}
+
 # Data stores
 var weather_data = {}  # weather_id -> weather definition
 var weather_list = []  # Array of all weather IDs for random selection
@@ -102,6 +111,12 @@ func get_weather_description() -> String:
 	if current_weather == null:
 		return "Clear skies."
 	return current_weather.description
+
+## Get weather icon emoji
+func get_weather_icon() -> String:
+	if current_weather == null:
+		return WEATHER_ICONS.get("clear", "☀️")
+	return WEATHER_ICONS.get(current_weather.weather_id, "☀️")
 
 ## Check if current weather has particle effect
 func has_particle_effect() -> bool:

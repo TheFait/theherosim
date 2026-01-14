@@ -85,3 +85,11 @@ func get_random_monster_ability() -> Dictionary:
 	if monster_abilities.is_empty():
 		return {}
 	return monster_abilities[randi() % monster_abilities.size()]
+
+## Get all hero abilities (for narrative room ability swapping)
+func get_all_abilities() -> Array:
+	return abilities
+
+## Get all monster abilities
+func get_all_monster_abilities() -> Array:
+	return monster_abilities

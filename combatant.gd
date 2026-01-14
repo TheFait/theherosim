@@ -12,6 +12,7 @@ var equipped_items = []  # Array of item instances (Dictionary)
 var item_effects = []  # Array of active item effect names
 var element = ""  # Monster's elemental type (fire, water, ice, etc.)
 var elemental_affinities = []  # Hero's elemental affinities (Array of element IDs)
+var family_name = ""  # Monster's family name (Goblin, Orc, Wolf, Dragon)
 
 func take_damage(amount):
 	var was_alive = not is_dead

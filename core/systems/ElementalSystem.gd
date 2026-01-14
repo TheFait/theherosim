@@ -109,3 +109,35 @@ func get_random_element() -> String:
 	if elements.is_empty():
 		return ""
 	return elements[randi() % elements.size()]
+
+## Calculate elemental damage with all modifiers applied
+## Returns Dictionary with "damage" (float) and "multiplier_text" (String)
+func calculate_damage(base_damage: float, element: String, user, target) -> Dictionary:
+	var final_damage = base_damage
+	var multiplier_text = ""
+
+	# Get target's element (if any)
+	var target_element = ""
+	if target and "element" in target:
+		target_element = target.element
+
+	# Apply elemental multiplier (strong/weak against)
+	var elemental_mult = get_elemental_multiplier(element, target_element)
+	if elemental_mult != 1.0:
+		final_damage *= elemental_mult
+		if elemental_mult > 1.0:
+			multiplier_text = " [color=#FF6B6B](Super Effective!)[/color]"
+		elif elemental_mult < 1.0:
+			multiplier_text = " [color=#6B9FFF](Not Very Effective)[/color]"
+
+	# Apply affinity bonus for heroes
+	if user and "elemental_affinities" in user:
+		var affinity_mult = get_affinity_multiplier(user.elemental_affinities, element)
+		if affinity_mult > 1.0:
+			final_damage *= affinity_mult
+			multiplier_text += " [color=#90EE90](Affinity Bonus)[/color]"
+
+	return {
+		"damage": final_damage,
+		"multiplier_text": multiplier_text
+	}
